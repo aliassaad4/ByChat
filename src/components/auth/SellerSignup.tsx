@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 const LEBANESE_CITIES = [
   "Beirut",
@@ -85,6 +86,7 @@ interface SellerSignupProps {
 
 const SellerSignup = ({ onSwitchToLogin }: SellerSignupProps) => {
   const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
   const {
     register,
@@ -138,7 +140,8 @@ const SellerSignup = ({ onSwitchToLogin }: SellerSignupProps) => {
 
         if (profileError) throw profileError;
 
-        toast.success("Account created! Please check your email to verify your account.");
+        toast.success("Account created successfully!");
+        navigate("/seller");
       }
     } catch (error: any) {
       toast.error(error.message || "Failed to create account");

@@ -82,7 +82,7 @@ export default function ShopPage() {
       productId: product.id,
       name: product.name,
       price: Number(product.price),
-      imageUrl: product.image_url,
+      imageUrl: product.image_urls?.[0] ?? null,
       sellerId: product.seller_id,
       sellerName: seller?.business_name || "",
     });
@@ -184,10 +184,10 @@ export default function ShopPage() {
                     key={product.id}
                     className="glass-card border-border overflow-hidden group hover:shadow-lg transition-all duration-300"
                   >
-                    {product.image_url && (
+                    {product.image_urls?.length > 0 && (
                       <div className="h-36 overflow-hidden">
                         <img
-                          src={product.image_url}
+                          src={product.image_urls[0]}
                           alt={product.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           loading="lazy"

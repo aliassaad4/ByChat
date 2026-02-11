@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Loader2, ImagePlus, X } from "lucide-react";
 import type { Product } from "@/pages/seller/SellerProducts";
 
 const schema = z.object({
@@ -30,7 +30,6 @@ const schema = z.object({
   description: z.string().optional(),
   price: z.coerce.number().min(0, "Price must be positive"),
   category: z.string().min(1, "Category is required"),
-  image_url: z.string().url("Must be a valid URL").or(z.literal("")).optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -57,6 +56,12 @@ interface Props {
 export function ProductFormModal({ open, onOpenChange, product, sellerId }: Props) {
   const queryClient = useQueryClient();
   const isEditing = !!product;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Track existing image URLs (from DB) and new files to upload
+  const [existingUrls, setExistingUrls] = useState<string[]>([]);
+  const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [newPreviews, setNewPreviews] = useState<string[]>([]);
 
   const {
     register,
@@ -72,7 +77,6 @@ export function ProductFormModal({ open, onOpenChange, product, sellerId }: Prop
       description: "",
       price: 0,
       category: "Other",
-      image_url: "",
     },
   });
 
@@ -83,21 +87,84 @@ export function ProductFormModal({ open, onOpenChange, product, sellerId }: Prop
         description: product.description ?? "",
         price: Number(product.price),
         category: product.category,
-        image_url: product.image_url ?? "",
       });
+      setExistingUrls(product.image_urls ?? []);
     } else {
-      reset({ name: "", description: "", price: 0, category: "Other", image_url: "" });
+      reset({ name: "", description: "", price: 0, category: "Other" });
+      setExistingUrls([]);
     }
-  }, [product, reset]);
+    setNewFiles([]);
+    setNewPreviews([]);
+  }, [product, reset, open]);
+
+  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+
+    setNewFiles((prev) => [...prev, ...files]);
+
+    // Generate previews
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setNewPreviews((prev) => [...prev, ev.target?.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Reset input so the same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeExistingImage = (index: number) => {
+    setExistingUrls((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeNewImage = (index: number) => {
+    setNewFiles((prev) => prev.filter((_, i) => i !== index));
+    setNewPreviews((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadFiles = async (files: File[]): Promise<string[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+
+    const urls: string[] = [];
+    for (const file of files) {
+      const ext = file.name.split(".").pop();
+      const path = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from("product-images")
+        .upload(path, file);
+
+      if (error) throw error;
+
+      const { data: urlData } = supabase.storage
+        .from("product-images")
+        .getPublicUrl(path);
+
+      urls.push(urlData.publicUrl);
+    }
+    return urls;
+  };
 
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
+      // Upload new files
+      let uploadedUrls: string[] = [];
+      if (newFiles.length > 0) {
+        uploadedUrls = await uploadFiles(newFiles);
+      }
+
+      const allImageUrls = [...existingUrls, ...uploadedUrls];
+
       const payload = {
         name: data.name,
         description: data.description || null,
         price: data.price,
         category: data.category,
-        image_url: data.image_url || null,
+        image_urls: allImageUrls,
         seller_id: sellerId,
       };
 
@@ -117,9 +184,11 @@ export function ProductFormModal({ open, onOpenChange, product, sellerId }: Prop
     onError: (err: any) => toast.error(err.message),
   });
 
+  const totalImages = existingUrls.length + newPreviews.length;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-card border-border sm:max-w-lg">
+      <DialogContent className="glass-card border-border sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit Product" : "Add New Product"}</DialogTitle>
         </DialogHeader>
@@ -156,10 +225,59 @@ export function ProductFormModal({ open, onOpenChange, product, sellerId }: Prop
             </div>
           </div>
 
+          {/* Image Upload Section */}
           <div className="space-y-2">
-            <Label>Image URL</Label>
-            <Input {...register("image_url")} className="bg-muted/50 border-border" placeholder="https://..." />
-            {errors.image_url && <p className="text-destructive text-sm">{errors.image_url.message}</p>}
+            <Label>Images</Label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleFilesSelected}
+            />
+
+            {/* Image Previews Grid */}
+            {totalImages > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {existingUrls.map((url, i) => (
+                  <div key={`existing-${i}`} className="relative group aspect-square rounded-lg overflow-hidden border border-border">
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeExistingImage(i)}
+                      className="absolute top-1 right-1 p-1 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {newPreviews.map((preview, i) => (
+                  <div key={`new-${i}`} className="relative group aspect-square rounded-lg overflow-hidden border border-border">
+                    <img src={preview} alt="" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeNewImage(i)}
+                      className="absolute top-1 right-1 p-1 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Upload Button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center gap-2 hover:border-primary/50 hover:bg-muted/30 transition-colors cursor-pointer"
+            >
+              <ImagePlus className="w-8 h-8 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                Click to add images
+              </span>
+            </button>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">

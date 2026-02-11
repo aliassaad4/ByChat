@@ -175,7 +175,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
-          image_url: string | null
+          image_urls: string[]
           is_available: boolean
           name: string
           price: number
@@ -187,7 +187,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
-          image_url?: string | null
+          image_urls?: string[]
           is_available?: boolean
           name: string
           price?: number
@@ -199,7 +199,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
-          image_url?: string | null
+          image_urls?: string[]
           is_available?: boolean
           name?: string
           price?: number

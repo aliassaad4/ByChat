@@ -43,6 +43,9 @@ const LoginForm = ({ onSwitchToSignup }: LoginFormProps) => {
 
       if (error) throw error;
 
+      // Ensure the session is set before querying profile tables
+      await supabase.auth.getSession();
+
       // Check if user is a seller or buyer and redirect accordingly
       const { data: sellerProfile } = await supabase
         .from("sellers")
@@ -62,7 +65,9 @@ const LoginForm = ({ onSwitchToSignup }: LoginFormProps) => {
       } else if (buyerProfile) {
         navigate("/buyer");
       } else {
-        navigate("/");
+        // No profile found — likely a new user whose profile wasn't created
+        navigate("/auth");
+        toast.error("No profile found. Please sign up first.");
       }
     } catch (error: any) {
       toast.error(error.message || "Failed to sign in");

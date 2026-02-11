@@ -17,7 +17,7 @@ export type Product = {
   description: string | null;
   price: number;
   category: string;
-  image_url: string | null;
+  image_urls: string[];
   is_available: boolean;
   created_at: string;
   updated_at: string;
@@ -88,10 +88,10 @@ export default function SellerProducts() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {products.map((product) => (
             <Card key={product.id} className="glass-card border-border overflow-hidden group">
-              {product.image_url && (
+              {product.image_urls?.length > 0 && (
                 <div className="h-40 overflow-hidden">
                   <img
-                    src={product.image_url}
+                    src={product.image_urls[0]}
                     alt={product.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />

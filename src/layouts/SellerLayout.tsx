@@ -7,9 +7,9 @@ import { Loader2 } from "lucide-react";
 
 export default function SellerLayout() {
   const { user, loading: authLoading } = useAuth();
-  const { data: seller, isLoading: sellerLoading } = useSellerProfile();
+  const { data: seller, isLoading: sellerLoading, isPending: sellerPending } = useSellerProfile();
 
-  if (authLoading || sellerLoading) {
+  if (authLoading || sellerLoading || (!!user && sellerPending)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />

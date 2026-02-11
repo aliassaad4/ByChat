@@ -13,7 +13,7 @@ type ProductResult = {
   name: string;
   description: string | null;
   price: number;
-  image_url: string | null;
+  image_urls: string[];
   category: string;
   seller_id: string;
   seller_name?: string;
@@ -62,7 +62,7 @@ export default function BuyerSearch() {
 
     const { data: products, error } = await supabase
       .from("products")
-      .select("id, name, description, price, image_url, category, seller_id")
+      .select("id, name, description, price, image_urls, category, seller_id")
       .eq("is_available", true)
       .or(orFilters)
       .limit(8);
@@ -165,9 +165,9 @@ export default function BuyerSearch() {
                   >
                     <CardContent className="p-0">
                       <div className="flex gap-3">
-                        {product.image_url ? (
+                        {product.image_urls?.length > 0 ? (
                           <img
-                            src={product.image_url}
+                            src={product.image_urls[0]}
                             alt={product.name}
                             className="w-20 h-20 object-cover rounded-l-xl"
                             loading="lazy"
