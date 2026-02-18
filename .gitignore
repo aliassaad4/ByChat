@@ -31,3 +31,4 @@ workflow_v2.json
 jihad.md
 n8n_*.ps1
 exec_detail.json
+create_mock_users.ps1
