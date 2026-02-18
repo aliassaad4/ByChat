@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { User, Save, Loader2, Pencil } from "lucide-react";
+import { User, Save, Loader2, Pencil, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +23,72 @@ const LEBANESE_CITIES = [
   "Baabda", "Jal el Dib", "Antelias", "Dbayeh", "Hazmieh", "Other",
 ];
 
+function LocationPicker({ value, onChange, editing }: { value: string; onChange: (v: string) => void; editing: boolean }) {
+  const [loading, setLoading] = useState(false);
+
+  const getLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+    setLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+        onChange(loc);
+        setLoading(false);
+        toast.success("Location captured!");
+      },
+      (err) => {
+        toast.error("Could not get location: " + err.message);
+        setLoading(false);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
+
+  const hasCoords = value && /^-?\d+\.\d+,-?\d+\.\d+$/.test(value);
+
+  if (!editing) {
+    return hasCoords ? (
+      <div className="flex items-center gap-2">
+        <MapPin className="w-4 h-4 text-primary" />
+        <a
+          href={`https://www.google.com/maps?q=${value}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-primary hover:underline"
+        >
+          View on map
+        </a>
+      </div>
+    ) : (
+      <p className="text-sm text-muted-foreground">Not set</p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <Input
+          placeholder="lat,lng or use button →"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1"
+        />
+        <Button type="button" variant="outline" size="icon" onClick={getLocation} disabled={loading}>
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+        </Button>
+      </div>
+      {hasCoords && (
+        <p className="text-xs text-muted-foreground">
+          📍 Location set — <a href={`https://www.google.com/maps?q=${value}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">preview</a>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function BuyerProfile() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -33,6 +99,7 @@ export default function BuyerProfile() {
     city_area: "",
     delivery_address: "",
     preferred_language: "en",
+    location_coords: "",
   });
 
   const { data: buyer, isLoading } = useQuery({
@@ -57,6 +124,7 @@ export default function BuyerProfile() {
         city_area: buyer.city_area,
         delivery_address: buyer.delivery_address,
         preferred_language: buyer.preferred_language,
+        location_coords: (buyer as any).location_coords || "",
       });
     }
   }, [buyer]);
@@ -184,6 +252,16 @@ export default function BuyerProfile() {
             )}
           </div>
 
+          {/* Location */}
+          <div className="space-y-1.5">
+            <Label>📍 Location</Label>
+            <LocationPicker
+              value={form.location_coords}
+              onChange={(v) => setForm((f) => ({ ...f, location_coords: v }))}
+              editing={editing}
+            />
+          </div>
+
           {/* Language */}
           <div className="space-y-1.5">
             <Label>Preferred Language</Label>
@@ -231,6 +309,7 @@ export default function BuyerProfile() {
                       city_area: buyer.city_area,
                       delivery_address: buyer.delivery_address,
                       preferred_language: buyer.preferred_language,
+                      location_coords: (buyer as any).location_coords || "",
                     });
                   }
                 }}

@@ -270,14 +270,14 @@ export default function ShopPage() {
       {/* Chat FAB */}
       <button
         onClick={() => setChatOpen(!chatOpen)}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-xl hover:scale-110 transition-transform"
+        className={`fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-xl hover:scale-110 transition-all duration-300 ${chatOpen ? "rotate-90 opacity-0 pointer-events-none" : ""}`}
       >
         <MessageCircle className="w-6 h-6 text-primary-foreground" />
       </button>
 
-      {/* Chat Panel */}
+      {/* Chat Panel — larger, responsive */}
       {chatOpen && (
-        <div className="fixed bottom-24 right-6 z-50 w-[360px] h-[500px] glass-card border-border rounded-2xl overflow-hidden shadow-2xl animate-scale-in">
+        <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 w-full sm:w-[420px] h-[85vh] sm:h-[600px] glass-card border-border sm:rounded-2xl rounded-t-2xl overflow-hidden shadow-2xl animate-scale-in">
           <ShopChatPanel
             agentName={agentName}
             storeName={seller.business_name}
