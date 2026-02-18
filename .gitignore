@@ -27,4 +27,7 @@ nul
 .claude/
 .mcp.json
 bychat-ai-agent-workflow.json
+workflow_v2.json
 jihad.md
+n8n_*.ps1
+exec_detail.json
