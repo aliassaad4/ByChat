@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -105,19 +106,15 @@ const SellerSignup = ({ onSwitchToLogin }: SellerSignupProps) => {
         </div>
 
         <form onSubmit={form.handleSubmit(onSubmit)}>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={step}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.25 }}
-            >
-              {step === 0 && <StepPersonalInfo form={form} onNext={() => setStep(1)} />}
-              {step === 1 && <StepBusinessInfo form={form} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
-              {step === 2 && <StepOperations form={form} onBack={() => setStep(1)} isLoading={isLoading} />}
-            </motion.div>
-          </AnimatePresence>
+          <div className={cn(step !== 0 && "hidden")}> 
+            <StepPersonalInfo form={form} onNext={() => setStep(1)} />
+          </div>
+          <div className={cn(step !== 1 && "hidden")}>
+            <StepBusinessInfo form={form} onNext={() => setStep(2)} onBack={() => setStep(0)} />
+          </div>
+          <div className={cn(step !== 2 && "hidden")}>
+            <StepOperations form={form} onBack={() => setStep(1)} isLoading={isLoading} />
+          </div>
         </form>
 
         <p className="text-center text-sm text-muted-foreground mt-6">
