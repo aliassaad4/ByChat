@@ -3,9 +3,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Store, ArrowLeft, ArrowRight, Bot } from "lucide-react";
+import { Store, ArrowLeft, ArrowRight, Bot, Check as CheckIcon } from "lucide-react";
 import { BUSINESS_TYPES, LEBANESE_CITIES, AI_AGENT_CAPABILITIES, AI_TONE_OPTIONS } from "./SellerSignupSchema";
 import type { SellerFormData } from "./SellerSignupSchema";
 
@@ -120,7 +120,11 @@ const StepBusinessInfo = ({ form, onNext, onBack }: StepBusinessInfoProps) => {
                       : "border-border bg-muted/30 hover:border-muted-foreground/30"
                   }`}
                 >
-                  <Checkbox checked={aiCapabilities.includes(cap.value)} onCheckedChange={() => toggleCapability(cap.value)} />
+                  <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                    aiCapabilities.includes(cap.value) ? "bg-primary border-primary" : "border-muted-foreground/40"
+                  }`}>
+                    {aiCapabilities.includes(cap.value) && <CheckIcon className="w-3 h-3 text-primary-foreground" />}
+                  </div>
                   <span className="text-sm">{cap.label}</span>
                 </div>
               ))}
