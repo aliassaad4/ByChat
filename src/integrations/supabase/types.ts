@@ -236,6 +236,11 @@ export type Database = {
           updated_at: string
           user_id: string
           whatsapp_number: string
+          whatsapp_connected: boolean
+          whatsapp_phone_number: string | null
+          whatsapp_phone_id: string | null
+          whatsapp_waba_id: string | null
+          whatsapp_access_token: string | null
           working_hours_close: string
           working_hours_open: string
         }
@@ -258,6 +263,11 @@ export type Database = {
           updated_at?: string
           user_id: string
           whatsapp_number: string
+          whatsapp_connected?: boolean
+          whatsapp_phone_number?: string | null
+          whatsapp_phone_id?: string | null
+          whatsapp_waba_id?: string | null
+          whatsapp_access_token?: string | null
           working_hours_close: string
           working_hours_open: string
         }
@@ -280,6 +290,11 @@ export type Database = {
           updated_at?: string
           user_id?: string
           whatsapp_number?: string
+          whatsapp_connected?: boolean
+          whatsapp_phone_number?: string | null
+          whatsapp_phone_id?: string | null
+          whatsapp_waba_id?: string | null
+          whatsapp_access_token?: string | null
           working_hours_close?: string
           working_hours_open?: string
         }

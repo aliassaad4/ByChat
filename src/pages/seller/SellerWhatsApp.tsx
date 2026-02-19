@@ -1,13 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Phone,
-  CheckCircle2,
-  XCircle,
-  Send,
-  Unplug,
   Info,
   AlertTriangle,
-  Bot,
+  Loader2,
+  Unplug,
+  CheckCircle2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,10 +17,24 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useSellerProfile } from "@/hooks/useSellerProfile";
+import { useQueryClient } from "@tanstack/react-query";
 
-/* ── Hardcoded state — swap with real data later ── */
-const CONNECTED = false;
-const CONNECTED_NUMBER = "+961 71 123 456";
+/* ── Meta App ID — set VITE_META_APP_ID in your .env ── */
+const META_APP_ID = import.meta.env.VITE_META_APP_ID as string | undefined;
+const META_CONFIG_ID = import.meta.env.VITE_META_CONFIG_ID as string | undefined;
+
+declare global {
+  interface Window {
+    FB: {
+      init: (opts: object) => void;
+      login: (cb: (resp: { authResponse?: { code: string } }) => void, opts: object) => void;
+    };
+    fbAsyncInit?: () => void;
+  }
+}
 
 const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -30,13 +42,147 @@ const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   </svg>
 );
 
+function loadFacebookSDK(appId: string) {
+  if (document.getElementById("facebook-jssdk")) return;
+  window.fbAsyncInit = function () {
+    window.FB.init({ appId, autoLogAppEvents: true, xfbml: true, version: "v19.0" });
+  };
+  const js = document.createElement("script");
+  js.id = "facebook-jssdk";
+  js.src = "https://connect.facebook.net/en_US/sdk.js";
+  document.body.appendChild(js);
+}
+
 export default function SellerWhatsApp() {
+  const { data: seller, isLoading } = useSellerProfile();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
   const [showSetupModal, setShowSetupModal] = useState(false);
-  const isConnected = CONNECTED;
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  /* Load Facebook SDK when component mounts */
+  useEffect(() => {
+    if (META_APP_ID) loadFacebookSDK(META_APP_ID);
+  }, []);
+
+  const isConnected = seller?.whatsapp_connected ?? false;
+  const connectedNumber = seller?.whatsapp_phone_number ?? "";
+
+  /* ── Launch Meta Embedded Signup ── */
+  function handleStartSetup() {
+    if (!META_APP_ID || !META_CONFIG_ID) {
+      toast({
+        title: "Setup not configured",
+        description: "WhatsApp Business integration is not yet configured by the platform. Please contact support.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!window.FB) {
+      toast({ title: "Please wait", description: "Facebook SDK is loading, try again in a moment." });
+      return;
+    }
+
+    setConnecting(true);
+
+    window.FB.login(
+      async (response) => {
+        if (!response.authResponse?.code) {
+          setConnecting(false);
+          toast({ title: "Cancelled", description: "WhatsApp setup was cancelled." });
+          return;
+        }
+
+        try {
+          /* Exchange the auth code for WhatsApp tokens via edge function */
+          const { data: sessionData } = await supabase.auth.getSession();
+          const jwt = sessionData.session?.access_token;
+
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${jwt}`,
+              },
+              body: JSON.stringify({
+                code: response.authResponse.code,
+                seller_id: seller!.id,
+              }),
+            }
+          );
+
+          const result = await res.json();
+
+          if (!res.ok) throw new Error(result.error || "Connection failed");
+
+          /* Refresh seller profile in cache */
+          await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
+
+          setShowSetupModal(false);
+          toast({
+            title: "WhatsApp connected!",
+            description: `Your number ${result.phone_number} is now active.`,
+          });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          toast({ title: "Connection failed", description: msg, variant: "destructive" });
+        } finally {
+          setConnecting(false);
+        }
+      },
+      {
+        config_id: META_CONFIG_ID,
+        response_type: "code",
+        override_default_response_type: true,
+        extras: { setup: {}, featurized_type: "lef", sessionInfoVersion: 2 },
+      }
+    );
+  }
+
+  /* ── Disconnect ── */
+  async function handleDisconnect() {
+    if (!seller) return;
+    setDisconnecting(true);
+    try {
+      const { error } = await supabase
+        .from("sellers")
+        .update({
+          whatsapp_connected: false,
+          whatsapp_phone_number: null,
+          whatsapp_phone_id: null,
+          whatsapp_waba_id: null,
+          whatsapp_access_token: null,
+        })
+        .eq("id", seller.id);
+
+      if (error) throw error;
+
+      await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
+      toast({ title: "Disconnected", description: "WhatsApp has been disconnected from your shop." });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-3xl">
-      {/* ── Page header ── */}
+      {/* Page header */}
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <WhatsAppIcon className="w-6 h-6 text-[#25D366]" />
@@ -47,14 +193,13 @@ export default function SellerWhatsApp() {
         </p>
       </div>
 
-      {/* ── 1. Connection Status Card ── */}
+      {/* Connection Status Card */}
       <Card className="glass-card border-border">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Connection Status</CardTitle>
         </CardHeader>
         <CardContent>
           {isConnected ? (
-            /* ── Connected state ── */
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-[#25D366] animate-pulse" />
@@ -66,26 +211,27 @@ export default function SellerWhatsApp() {
 
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Phone className="w-4 h-4" />
-                <span>{CONNECTED_NUMBER}</span>
+                <span>{connectedNumber}</span>
               </div>
 
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Send className="w-4 h-4" />
-                  Send Test Message
-                </Button>
+              <div className="flex gap-2 pt-1">
                 <Button
                   variant="outline"
                   size="sm"
                   className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+                  onClick={handleDisconnect}
+                  disabled={disconnecting}
                 >
-                  <Unplug className="w-4 h-4" />
+                  {disconnecting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Unplug className="w-4 h-4" />
+                  )}
                   Disconnect
                 </Button>
               </div>
             </div>
           ) : (
-            /* ── Not connected state ── */
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-muted-foreground/40" />
@@ -105,13 +251,11 @@ export default function SellerWhatsApp() {
         </CardContent>
       </Card>
 
-      {/* ── 4. Info Section ── */}
+      {/* How it works */}
       <Card className="glass-card border-border">
         <CardContent className="p-5">
           <div className="flex gap-3">
-            <div className="shrink-0 mt-0.5">
-              <Info className="w-5 h-5 text-primary" />
-            </div>
+            <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
             <div className="space-y-1">
               <p className="text-sm font-medium">How it works</p>
               <p className="text-sm text-muted-foreground leading-relaxed">
@@ -124,7 +268,7 @@ export default function SellerWhatsApp() {
         </CardContent>
       </Card>
 
-      {/* ── 2. Setup Modal ── */}
+      {/* Setup Modal */}
       <Dialog open={showSetupModal} onOpenChange={setShowSetupModal}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -140,46 +284,44 @@ export default function SellerWhatsApp() {
           </DialogHeader>
 
           <div className="space-y-5 py-2">
-            {/* Steps */}
             <ol className="space-y-4">
               {[
-                {
-                  step: 1,
-                  text: "Click the button below to open Meta's secure signup",
-                },
-                {
-                  step: 2,
-                  text: "Enter your business phone number and verify with the OTP Meta sends you",
-                },
-                {
-                  step: 3,
-                  text: "Done — your AI agent will now reply to customers on WhatsApp automatically",
-                },
+                { step: 1, text: "Click the button below to open Meta's secure signup" },
+                { step: 2, text: "Enter your business phone number and verify with the OTP Meta sends you" },
+                { step: 3, text: "Done — your AI agent will now reply to customers on WhatsApp automatically" },
               ].map(({ step, text }) => (
                 <li key={step} className="flex gap-3">
                   <div className="shrink-0 w-7 h-7 rounded-full bg-[#25D366]/20 text-[#25D366] flex items-center justify-center text-sm font-bold">
-                    {step}
+                    {connecting && step === 2 ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      step
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground pt-0.5">{text}</p>
                 </li>
               ))}
             </ol>
 
-            {/* CTA Button */}
             <Button
               id="whatsapp-signup-btn"
               size="lg"
               className="w-full gap-2 bg-[#25D366] hover:bg-[#1da851] text-white text-base"
+              onClick={handleStartSetup}
+              disabled={connecting}
             >
-              <WhatsAppIcon className="w-5 h-5" />
-              Start WhatsApp Setup
+              {connecting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <WhatsAppIcon className="w-5 h-5" />
+              )}
+              {connecting ? "Connecting..." : "Start WhatsApp Setup"}
             </Button>
 
             <p className="text-xs text-center text-muted-foreground">
               This takes about 3 minutes and happens only once.
             </p>
 
-            {/* Warning */}
             <div className="flex gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
               <AlertTriangle className="w-5 h-5 shrink-0 text-yellow-500 mt-0.5" />
               <p className="text-xs text-yellow-200 leading-relaxed">
