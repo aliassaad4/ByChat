@@ -21,8 +21,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSellerProfile } from "@/hooks/useSellerProfile";
 import { useQueryClient } from "@tanstack/react-query";
 
-const META_APP_ID    = import.meta.env.VITE_META_APP_ID    as string | undefined;
-const META_CONFIG_ID = import.meta.env.VITE_META_CONFIG_ID as string | undefined;
+const META_APP_ID    = import.meta.env.VITE_META_APP_ID    || "25818796847770357";
+const META_CONFIG_ID = import.meta.env.VITE_META_CONFIG_ID || "1480790747086543";
 const SUPABASE_URL   = import.meta.env.VITE_SUPABASE_URL   as string;
 
 declare global {
