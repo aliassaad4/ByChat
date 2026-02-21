@@ -69,6 +69,28 @@ export default function SellerWhatsApp() {
   const isConnected = seller?.whatsapp_connected ?? false;
   const connectedNumber = seller?.whatsapp_phone_number ?? "";
 
+  /* ── Called after FB.login succeeds — kept async outside FB.login callback ── */
+  async function submitCode(code: string) {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const jwt = sessionData.session?.access_token;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ code, seller_id: seller!.id }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "Connection failed");
+      await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
+      setShowModal(false);
+      toast({ title: "WhatsApp connected!", description: `${result.phone_number} is now active.` });
+    } catch (err: unknown) {
+      toast({ title: "Connection failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setConnecting(false);
+    }
+  }
+
   /* ── Launch Meta Embedded Signup ── */
   function handleStartSetup() {
     if (!META_APP_ID || !META_CONFIG_ID) {
@@ -112,30 +134,7 @@ export default function SellerWhatsApp() {
             toast({ title: "Cancelled", description: "WhatsApp setup was cancelled." });
             return;
           }
-          const code = response.authResponse.code;
-          void (async () => {
-            try {
-              const { data: sessionData } = await supabase.auth.getSession();
-              const jwt = sessionData.session?.access_token;
-
-              const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-connect`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
-                body: JSON.stringify({ code, seller_id: seller!.id }),
-              });
-
-              const result = await res.json();
-              if (!res.ok) throw new Error(result.error ?? "Connection failed");
-
-              await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
-              setShowModal(false);
-              toast({ title: "WhatsApp connected!", description: `${result.phone_number} is now active.` });
-            } catch (err: unknown) {
-              toast({ title: "Connection failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-            } finally {
-              setConnecting(false);
-            }
-          })();
+          submitCode(response.authResponse.code);
         },
         {
           config_id: META_CONFIG_ID,
