@@ -1,19 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Phone,
   Info,
   AlertTriangle,
   Loader2,
   Unplug,
-  Eye,
-  EyeOff,
-  ExternalLink,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +21,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSellerProfile } from "@/hooks/useSellerProfile";
 import { useQueryClient } from "@tanstack/react-query";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const META_APP_ID    = import.meta.env.VITE_META_APP_ID    as string | undefined;
+const META_CONFIG_ID = import.meta.env.VITE_META_CONFIG_ID as string | undefined;
+const SUPABASE_URL   = import.meta.env.VITE_SUPABASE_URL   as string;
+
+declare global {
+  interface Window {
+    FB: {
+      init: (opts: object) => void;
+      login: (cb: (resp: { authResponse?: { code: string } }) => void, opts: object) => void;
+    };
+    fbAsyncInit?: () => void;
+  }
+}
 
 const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -34,63 +41,86 @@ const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   </svg>
 );
 
+function loadFacebookSDK(appId: string) {
+  if (document.getElementById("facebook-jssdk")) return;
+  window.fbAsyncInit = function () {
+    window.FB.init({ appId, autoLogAppEvents: true, xfbml: true, version: "v19.0" });
+  };
+  const js = document.createElement("script");
+  js.id = "facebook-jssdk";
+  js.src = "https://connect.facebook.net/en_US/sdk.js";
+  document.body.appendChild(js);
+}
+
 export default function SellerWhatsApp() {
   const { data: seller, isLoading } = useSellerProfile();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const [showModal, setShowModal] = useState(false);
-  const [accountSid, setAccountSid] = useState("");
-  const [authToken, setAuthToken] = useState("");
-  const [fromNumber, setFromNumber] = useState("");
-  const [showToken, setShowToken] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+
+  useEffect(() => {
+    if (META_APP_ID) loadFacebookSDK(META_APP_ID);
+  }, []);
 
   const isConnected = seller?.whatsapp_connected ?? false;
   const connectedNumber = seller?.whatsapp_phone_number ?? "";
 
-  /* ── Connect via Twilio credentials ── */
-  async function handleConnect() {
-    if (!accountSid.trim() || !authToken.trim() || !fromNumber.trim()) {
-      toast({ title: "All fields required", description: "Please fill in all three fields.", variant: "destructive" });
+  /* ── Launch Meta Embedded Signup ── */
+  function handleStartSetup() {
+    if (!META_APP_ID || !META_CONFIG_ID) {
+      toast({
+        title: "Not configured yet",
+        description: "Please add VITE_META_APP_ID and VITE_META_CONFIG_ID to your environment.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!window.FB) {
+      toast({ title: "Loading…", description: "Facebook SDK is still loading, try again in a second." });
       return;
     }
 
     setConnecting(true);
-    try {
-      const { data: session } = await supabase.auth.getSession();
-      const jwt = session.session?.access_token;
 
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-connect`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${jwt}`,
-        },
-        body: JSON.stringify({
-          seller_id: seller!.id,
-          account_sid: accountSid.trim(),
-          auth_token: authToken.trim(),
-          from_number: fromNumber.trim().startsWith("whatsapp:")
-            ? fromNumber.trim()
-            : `whatsapp:${fromNumber.trim()}`,
-        }),
-      });
+    window.FB.login(
+      async (response) => {
+        if (!response.authResponse?.code) {
+          setConnecting(false);
+          toast({ title: "Cancelled", description: "WhatsApp setup was cancelled." });
+          return;
+        }
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const jwt = sessionData.session?.access_token;
 
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error ?? "Connection failed");
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-connect`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+            body: JSON.stringify({ code: response.authResponse.code, seller_id: seller!.id }),
+          });
 
-      await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
-      setShowModal(false);
-      setAccountSid(""); setAuthToken(""); setFromNumber("");
-      toast({ title: "WhatsApp connected!", description: `${result.display_number} is now live.` });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      toast({ title: "Connection failed", description: msg, variant: "destructive" });
-    } finally {
-      setConnecting(false);
-    }
+          const result = await res.json();
+          if (!res.ok) throw new Error(result.error ?? "Connection failed");
+
+          await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
+          setShowModal(false);
+          toast({ title: "WhatsApp connected!", description: `${result.phone_number} is now active.` });
+        } catch (err: unknown) {
+          toast({ title: "Connection failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+        } finally {
+          setConnecting(false);
+        }
+      },
+      {
+        config_id: META_CONFIG_ID,
+        response_type: "code",
+        override_default_response_type: true,
+        extras: { setup: {}, featurized_type: "lef", sessionInfoVersion: 2 },
+      }
+    );
   }
 
   /* ── Disconnect ── */
@@ -103,18 +133,16 @@ export default function SellerWhatsApp() {
         .update({
           whatsapp_connected: false,
           whatsapp_phone_number: null,
-          twilio_account_sid: null,
-          twilio_auth_token: null,
-          twilio_from_number: null,
+          whatsapp_phone_id: null,
+          whatsapp_waba_id: null,
+          whatsapp_access_token: null,
         })
         .eq("id", seller.id);
-
       if (error) throw error;
       await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
-      toast({ title: "Disconnected", description: "WhatsApp has been disconnected from your shop." });
+      toast({ title: "Disconnected", description: "WhatsApp has been disconnected." });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      toast({ title: "Error", description: msg, variant: "destructive" });
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
       setDisconnecting(false);
     }
@@ -130,7 +158,6 @@ export default function SellerWhatsApp() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <WhatsAppIcon className="w-6 h-6 text-[#25D366]" />
@@ -141,7 +168,7 @@ export default function SellerWhatsApp() {
         </p>
       </div>
 
-      {/* Connection Status */}
+      {/* Status Card */}
       <Card className="glass-card border-border">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Connection Status</CardTitle>
@@ -159,8 +186,7 @@ export default function SellerWhatsApp() {
                 <span>{connectedNumber}</span>
               </div>
               <Button
-                variant="outline"
-                size="sm"
+                variant="outline" size="sm"
                 className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
                 onClick={handleDisconnect}
                 disabled={disconnecting}
@@ -188,7 +214,7 @@ export default function SellerWhatsApp() {
         </CardContent>
       </Card>
 
-      {/* How it works */}
+      {/* Info */}
       <Card className="glass-card border-border">
         <CardContent className="p-5">
           <div className="flex gap-3">
@@ -205,7 +231,7 @@ export default function SellerWhatsApp() {
         </CardContent>
       </Card>
 
-      {/* Connect Modal */}
+      {/* Setup Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -213,91 +239,49 @@ export default function SellerWhatsApp() {
               <div className="w-9 h-9 rounded-xl bg-[#25D366] flex items-center justify-center">
                 <WhatsAppIcon className="w-5 h-5 text-white" />
               </div>
-              Connect via Twilio
+              Connect Your WhatsApp Number
             </DialogTitle>
             <DialogDescription>
-              Enter your Twilio credentials. We'll handle the rest automatically.
+              Follow these simple steps to connect your business number.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-5 py-2">
-            {/* Step hint */}
-            <div className="flex gap-2 rounded-lg border border-border bg-muted/30 p-3">
-              <ExternalLink className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
-              <p className="text-xs text-muted-foreground">
-                Find your credentials at{" "}
-                <span className="font-mono text-foreground">console.twilio.com</span>{" "}
-                → Account Info (top of dashboard)
-              </p>
-            </div>
-
-            {/* Account SID */}
-            <div className="space-y-1.5">
-              <Label htmlFor="sid">Account SID</Label>
-              <Input
-                id="sid"
-                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                value={accountSid}
-                onChange={(e) => setAccountSid(e.target.value)}
-                className="font-mono text-sm"
-              />
-            </div>
-
-            {/* Auth Token */}
-            <div className="space-y-1.5">
-              <Label htmlFor="token">Auth Token</Label>
-              <div className="relative">
-                <Input
-                  id="token"
-                  type={showToken ? "text" : "password"}
-                  placeholder="Your Twilio auth token"
-                  value={authToken}
-                  onChange={(e) => setAuthToken(e.target.value)}
-                  className="font-mono text-sm pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowToken((p) => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* From Number */}
-            <div className="space-y-1.5">
-              <Label htmlFor="from">WhatsApp Business Number</Label>
-              <Input
-                id="from"
-                placeholder="+14155238886"
-                value={fromNumber}
-                onChange={(e) => setFromNumber(e.target.value)}
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground">
-                The Twilio phone number enabled for WhatsApp (with country code)
-              </p>
-            </div>
+            <ol className="space-y-4">
+              {[
+                { step: 1, text: "Click the button below to open Meta's secure signup" },
+                { step: 2, text: "Enter your business phone number and verify with the OTP Meta sends you" },
+                { step: 3, text: "Done — your AI agent will now reply to customers on WhatsApp automatically" },
+              ].map(({ step, text }) => (
+                <li key={step} className="flex gap-3">
+                  <div className="shrink-0 w-7 h-7 rounded-full bg-[#25D366]/20 text-[#25D366] flex items-center justify-center text-sm font-bold">
+                    {step}
+                  </div>
+                  <p className="text-sm text-muted-foreground pt-0.5">{text}</p>
+                </li>
+              ))}
+            </ol>
 
             <Button
+              id="whatsapp-signup-btn"
               size="lg"
-              className="w-full gap-2 bg-[#25D366] hover:bg-[#1da851] text-white"
-              onClick={handleConnect}
+              className="w-full gap-2 bg-[#25D366] hover:bg-[#1da851] text-white text-base"
+              onClick={handleStartSetup}
               disabled={connecting}
             >
-              {connecting ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /> Connecting...</>
-              ) : (
-                <><WhatsAppIcon className="w-5 h-5" /> Connect</>
-              )}
+              {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <WhatsAppIcon className="w-5 h-5" />}
+              {connecting ? "Connecting…" : "Start WhatsApp Setup"}
             </Button>
+
+            <p className="text-xs text-center text-muted-foreground">
+              This takes about 3 minutes and happens only once.
+            </p>
 
             <div className="flex gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
               <AlertTriangle className="w-5 h-5 shrink-0 text-yellow-500 mt-0.5" />
               <p className="text-xs text-yellow-200 leading-relaxed">
-                Your Twilio credentials are stored securely and only used to send
-                and receive WhatsApp messages on your behalf.
+                The phone number you connect cannot be used on the WhatsApp app
+                simultaneously. We recommend using a dedicated business number.
               </p>
             </div>
           </div>
