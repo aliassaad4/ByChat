@@ -241,6 +241,9 @@ export type Database = {
           whatsapp_phone_id: string | null
           whatsapp_waba_id: string | null
           whatsapp_access_token: string | null
+          twilio_account_sid: string | null
+          twilio_auth_token: string | null
+          twilio_from_number: string | null
           working_hours_close: string
           working_hours_open: string
         }
@@ -268,6 +271,9 @@ export type Database = {
           whatsapp_phone_id?: string | null
           whatsapp_waba_id?: string | null
           whatsapp_access_token?: string | null
+          twilio_account_sid?: string | null
+          twilio_auth_token?: string | null
+          twilio_from_number?: string | null
           working_hours_close: string
           working_hours_open: string
         }
@@ -295,6 +301,9 @@ export type Database = {
           whatsapp_phone_id?: string | null
           whatsapp_waba_id?: string | null
           whatsapp_access_token?: string | null
+          twilio_account_sid?: string | null
+          twilio_auth_token?: string | null
+          twilio_from_number?: string | null
           working_hours_close?: string
           working_hours_open?: string
         }
