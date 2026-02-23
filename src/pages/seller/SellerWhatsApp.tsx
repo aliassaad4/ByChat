@@ -1,43 +1,17 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  Phone,
-  Info,
-  AlertTriangle,
-  Loader2,
-  Unplug,
-  KeyRound,
-} from "lucide-react";
+import { useState } from "react";
+import { Loader2, AlertTriangle, Copy, Check, Unplug, Info, Phone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useSellerProfile } from "@/hooks/useSellerProfile";
 import { useQueryClient } from "@tanstack/react-query";
 
-const META_APP_ID    = import.meta.env.VITE_META_APP_ID    || "25818796847770357";
-const META_CONFIG_ID = import.meta.env.VITE_META_CONFIG_ID || "1480790747086543";
-const SUPABASE_URL   = import.meta.env.VITE_SUPABASE_URL   as string;
-
-declare global {
-  interface Window {
-    FB: {
-      init: (opts: object) => void;
-      login: (cb: (resp: { authResponse?: { code: string } }) => void, opts: object) => void;
-    };
-    fbAsyncInit?: () => void;
-  }
-}
+const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL as string;
+const WEBHOOK_URL   = `${SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
 const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -45,67 +19,40 @@ const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   </svg>
 );
 
-function loadFacebookSDK(appId: string) {
-  if (document.getElementById("facebook-jssdk")) return;
-  window.fbAsyncInit = function () {
-    window.FB.init({ appId, autoLogAppEvents: true, xfbml: true, version: "v19.0" });
-  };
-  const js = document.createElement("script");
-  js.id = "facebook-jssdk";
-  js.src = "https://connect.facebook.net/en_US/sdk.js";
-  document.body.appendChild(js);
+function Step({ n, title, children }: { n: number; title: string; children?: React.ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <div className="shrink-0 w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold">
+        {n}
+      </div>
+      <div className="pt-0.5 flex-1">
+        <p className="text-sm font-medium">{title}</p>
+        {children && <div className="text-sm text-muted-foreground mt-1">{children}</div>}
+      </div>
+    </div>
+  );
 }
 
 export default function SellerWhatsApp() {
-  const { data: seller, isLoading } = useSellerProfile();
-  const queryClient = useQueryClient();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: seller, isLoading } = useSellerProfile();
 
-  const [showModal, setShowModal] = useState(false);
-  const [connecting, setConnecting] = useState(false);
+  const [accountSid, setAccountSid]   = useState("");
+  const [authToken, setAuthToken]     = useState("");
+  const [fromNumber, setFromNumber]   = useState("");
+  const [saving, setSaving]           = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [manualPhoneId, setManualPhoneId] = useState("");
-  const [manualAccessToken, setManualAccessToken] = useState("");
-  const [manualPhoneNumber, setManualPhoneNumber] = useState("");
-  const [manualSaving, setManualSaving] = useState(false);
-  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [copied, setCopied]           = useState(false);
 
-  useEffect(() => {
-    if (META_APP_ID) loadFacebookSDK(META_APP_ID);
-  }, []);
+  const isConnected = !!seller?.whatsapp_connected;
 
-  const isConnected = seller?.whatsapp_connected ?? false;
-  const connectedNumber = seller?.whatsapp_phone_number ?? "";
-
-  /* ── Called after FB.login succeeds — kept async outside FB.login callback ── */
-  async function submitCode(code: string) {
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const jwt = sessionData.session?.access_token;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
-        body: JSON.stringify({ code, seller_id: seller!.id }),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error ?? "Connection failed");
-      await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
-      setShowModal(false);
-      toast({ title: "WhatsApp connected!", description: `${result.phone_number} is now active.` });
-    } catch (err: unknown) {
-      toast({ title: "Connection failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setConnecting(false);
-    }
-  }
-
-  /* ── Manual credentials save ── */
-  async function handleManualSave() {
-    if (!manualPhoneId.trim() || !manualAccessToken.trim() || !manualPhoneNumber.trim()) {
+  async function handleConnect() {
+    if (!accountSid.trim() || !authToken.trim() || !fromNumber.trim()) {
       toast({ title: "Missing fields", description: "Please fill in all three fields.", variant: "destructive" });
       return;
     }
-    setManualSaving(true);
+    setSaving(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const jwt = sessionData.session?.access_token;
@@ -113,87 +60,24 @@ export default function SellerWhatsApp() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
         body: JSON.stringify({
-          phone_id: manualPhoneId.trim(),
-          access_token: manualAccessToken.trim(),
-          phone_number: manualPhoneNumber.trim(),
-          seller_id: seller!.id,
+          account_sid: accountSid.trim(),
+          auth_token:  authToken.trim(),
+          from_number: fromNumber.trim(),
+          seller_id:   seller!.id,
         }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error ?? "Save failed");
+      if (!res.ok) throw new Error(result.error ?? "Connection failed");
       await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
-      setShowModal(false);
-      setManualPhoneId("");
-      setManualAccessToken("");
-      setManualPhoneNumber("");
+      setAccountSid(""); setAuthToken(""); setFromNumber("");
       toast({ title: "WhatsApp connected!", description: `${result.phone_number} is now active.` });
     } catch (err: unknown) {
       toast({ title: "Connection failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
-      setManualSaving(false);
+      setSaving(false);
     }
   }
 
-  /* ── Launch Meta Embedded Signup ── */
-  function handleStartSetup() {
-    if (!META_APP_ID || !META_CONFIG_ID) {
-      toast({
-        title: "Not configured yet",
-        description: "Please add VITE_META_APP_ID and VITE_META_CONFIG_ID to your environment.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (!window.FB) {
-      toast({ title: "Loading…", description: "Facebook SDK is still loading, try again in a second." });
-      return;
-    }
-
-    setConnecting(true);
-
-    /* Safety timeout — reset if the Meta popup never calls back */
-    connectTimeoutRef.current = setTimeout(() => {
-      setConnecting(false);
-      toast({
-        title: "Timed out",
-        description: "The Meta popup didn't respond. Make sure pop-ups are allowed in your browser and try again.",
-        variant: "destructive",
-      });
-    }, 120_000); // 2 minutes
-
-    const clearConnectTimeout = () => {
-      if (connectTimeoutRef.current) {
-        clearTimeout(connectTimeoutRef.current);
-        connectTimeoutRef.current = null;
-      }
-    };
-
-    try {
-      window.FB.login(
-        (response) => {
-          clearConnectTimeout();
-          if (!response.authResponse?.code) {
-            setConnecting(false);
-            toast({ title: "Cancelled", description: "WhatsApp setup was cancelled." });
-            return;
-          }
-          submitCode(response.authResponse.code);
-        },
-        {
-          config_id: META_CONFIG_ID,
-          response_type: "code",
-          override_default_response_type: true,
-          extras: { setup: {}, featurized_type: "lef", sessionInfoVersion: 2 },
-        }
-      );
-    } catch (err: unknown) {
-      clearConnectTimeout();
-      setConnecting(false);
-      toast({ title: "Error", description: err instanceof Error ? err.message : "Could not open Meta popup.", variant: "destructive" });
-    }
-  }
-
-  /* ── Disconnect ── */
   async function handleDisconnect() {
     if (!seller) return;
     setDisconnecting(true);
@@ -201,11 +85,11 @@ export default function SellerWhatsApp() {
       const { error } = await supabase
         .from("sellers")
         .update({
-          whatsapp_connected: false,
+          whatsapp_connected:    false,
           whatsapp_phone_number: null,
-          whatsapp_phone_id: null,
-          whatsapp_waba_id: null,
-          whatsapp_access_token: null,
+          twilio_account_sid:    null,
+          twilio_auth_token:     null,
+          twilio_from_number:    null,
         })
         .eq("id", seller.id);
       if (error) throw error;
@@ -218,6 +102,12 @@ export default function SellerWhatsApp() {
     }
   }
 
+  function copyWebhook() {
+    navigator.clipboard.writeText(WEBHOOK_URL);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-48">
@@ -227,7 +117,7 @@ export default function SellerWhatsApp() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <WhatsAppIcon className="w-6 h-6 text-[#25D366]" />
@@ -238,23 +128,30 @@ export default function SellerWhatsApp() {
         </p>
       </div>
 
-      {/* Status Card */}
-      <Card className="glass-card border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Connection Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isConnected ? (
-            <div className="space-y-4">
+      {/* ── Connected state ── */}
+      {isConnected ? (
+        <Card className="glass-card border-[#25D366]/30">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-[#25D366] animate-pulse" />
-                <span className="font-medium">Connected</span>
-                <Badge className="bg-[#25D366]/20 text-[#25D366] border-[#25D366]/30 text-xs">Active</Badge>
+                <div className="w-10 h-10 rounded-xl bg-[#25D366] flex items-center justify-center">
+                  <WhatsAppIcon className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-semibold">WhatsApp Connected</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5" />
+                    {seller?.whatsapp_phone_number}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Phone className="w-4 h-4" />
-                <span>{connectedNumber}</span>
-              </div>
+              <Badge className="bg-[#25D366]/20 text-[#25D366] border-[#25D366]/30">Active</Badge>
+            </div>
+
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted-foreground mb-3">
+                Your AI agent is live on WhatsApp. Customers who message your number will get instant AI replies.
+              </p>
               <Button
                 variant="outline" size="sm"
                 className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
@@ -262,191 +159,140 @@ export default function SellerWhatsApp() {
                 disabled={disconnecting}
               >
                 {disconnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unplug className="w-4 h-4" />}
-                Disconnect
+                Disconnect WhatsApp
               </Button>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-muted-foreground/40" />
-                <span className="text-muted-foreground font-medium">Not Connected</span>
-              </div>
-              <Button
-                size="lg"
-                className="w-full sm:w-auto gap-2 bg-[#25D366] hover:bg-[#1da851] text-white"
-                onClick={() => setShowModal(true)}
-              >
-                <WhatsAppIcon className="w-5 h-5" />
-                Connect WhatsApp Business
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Info */}
-      <Card className="glass-card border-border">
-        <CardContent className="p-5">
-          <div className="flex gap-3">
-            <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-sm font-medium">How it works</p>
+          </CardContent>
+        </Card>
+      ) : (
+        /* ── Setup state ── */
+        <>
+          {/* How it works */}
+          <Card className="glass-card border-border">
+            <CardContent className="p-5 flex gap-3">
+              <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
               <p className="text-sm text-muted-foreground leading-relaxed">
-                When a customer messages your WhatsApp number, your AI agent
-                (already configured in your shop settings) will reply
-                automatically — same products, same personality, 24/7.
+                ByChat uses <strong className="text-foreground">Twilio</strong> to connect your WhatsApp number.
+                Twilio is a free-to-sign-up messaging platform. You pay only for messages sent (~$0.005 each).
+                Setup takes about 10 minutes and happens only once.
               </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
 
-      {/* Setup Modal */}
-      <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <div className="w-9 h-9 rounded-xl bg-[#25D366] flex items-center justify-center">
-                <WhatsAppIcon className="w-5 h-5 text-white" />
+          {/* Steps */}
+          <Card className="glass-card border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Setup Instructions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <Step n={1} title="Create a free Twilio account">
+                Go to{" "}
+                <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                  twilio.com/try-twilio
+                </a>{" "}
+                and sign up. No credit card needed for the free trial.
+              </Step>
+
+              <Step n={2} title="Activate the WhatsApp Sandbox">
+                In Twilio Console → left menu →{" "}
+                <strong className="text-foreground">Messaging → Try it out → Send a WhatsApp message</strong>.
+                Follow the on-screen steps to activate the sandbox (you send a join code to Twilio's number).
+              </Step>
+
+              <Step n={3} title="Set the webhook URL in Twilio">
+                In the Sandbox settings page, find the field{" "}
+                <strong className="text-foreground">"When a message comes in"</strong> and paste this URL:
+                <div className="mt-2 flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded-lg break-all select-all">
+                    {WEBHOOK_URL}
+                  </code>
+                  <Button variant="outline" size="sm" onClick={copyWebhook} className="shrink-0 gap-1.5">
+                    {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? "Copied!" : "Copy"}
+                  </Button>
+                </div>
+                Make sure the method is set to <strong className="text-foreground">HTTP POST</strong>. Save.
+              </Step>
+
+              <Step n={4} title="Copy your credentials from Twilio Console">
+                Go to the{" "}
+                <a href="https://console.twilio.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                  Twilio Console homepage
+                </a>
+                . You'll see your <strong className="text-foreground">Account SID</strong> and{" "}
+                <strong className="text-foreground">Auth Token</strong> in the top section. The sandbox number is{" "}
+                <strong className="text-foreground">+14155238886</strong>.
+              </Step>
+
+              <Step n={5} title="Paste your credentials below and click Connect" />
+            </CardContent>
+          </Card>
+
+          {/* Credentials form */}
+          <Card className="glass-card border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+                Enter Your Twilio Credentials
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="account-sid">Account SID</Label>
+                <Input
+                  id="account-sid"
+                  placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  value={accountSid}
+                  onChange={e => setAccountSid(e.target.value)}
+                />
               </div>
-              Connect Your WhatsApp Number
-            </DialogTitle>
-            <DialogDescription>
-              Choose how you'd like to connect your business number.
-            </DialogDescription>
-          </DialogHeader>
 
-          <Tabs defaultValue="manual" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="manual" className="gap-2">
-                <KeyRound className="w-4 h-4" /> Manual Setup
-              </TabsTrigger>
-              <TabsTrigger value="embedded" className="gap-2">
-                <WhatsAppIcon className="w-4 h-4" /> Auto Setup
-              </TabsTrigger>
-            </TabsList>
+              <div className="space-y-1.5">
+                <Label htmlFor="auth-token">Auth Token</Label>
+                <Input
+                  id="auth-token"
+                  type="password"
+                  placeholder="Your Twilio Auth Token"
+                  value={authToken}
+                  onChange={e => setAuthToken(e.target.value)}
+                />
+              </div>
 
-            {/* ── Manual tab ── */}
-            <TabsContent value="manual" className="space-y-4 pt-4">
-              <p className="text-sm text-muted-foreground">
-                Paste your credentials from{" "}
-                <strong className="text-foreground">Meta for Developers</strong>{" "}
-                → WhatsApp → API Setup. This works immediately without any approval process.
-              </p>
-
-              <ol className="space-y-2 text-xs text-muted-foreground list-decimal list-inside">
-                <li>Go to <strong className="text-foreground">developers.facebook.com</strong> → your app → WhatsApp → API Setup</li>
-                <li>Copy the <strong className="text-foreground">Phone Number ID</strong> (not the phone number itself)</li>
-                <li>Generate a <strong className="text-foreground">permanent access token</strong> (System User → Generate Token)</li>
-                <li>Copy your business phone number (e.g. +961 70 123 456)</li>
-              </ol>
-
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label htmlFor="phone-number">Business Phone Number</Label>
-                  <Input
-                    id="phone-number"
-                    placeholder="+961 70 123 456"
-                    value={manualPhoneNumber}
-                    onChange={(e) => setManualPhoneNumber(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="phone-id">Phone Number ID</Label>
-                  <Input
-                    id="phone-id"
-                    placeholder="123456789012345"
-                    value={manualPhoneId}
-                    onChange={(e) => setManualPhoneId(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="access-token">Permanent Access Token</Label>
-                  <Input
-                    id="access-token"
-                    type="password"
-                    placeholder="EAA…"
-                    value={manualAccessToken}
-                    onChange={(e) => setManualAccessToken(e.target.value)}
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="from-number">WhatsApp Number</Label>
+                <Input
+                  id="from-number"
+                  placeholder="+14155238886"
+                  value={fromNumber}
+                  onChange={e => setFromNumber(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  For the sandbox: <code className="bg-muted px-1 rounded">+14155238886</code>. For a paid Twilio number, enter that number instead.
+                </p>
               </div>
 
               <Button
                 size="lg"
                 className="w-full gap-2 bg-[#25D366] hover:bg-[#1da851] text-white"
-                onClick={handleManualSave}
-                disabled={manualSaving}
+                onClick={handleConnect}
+                disabled={saving}
               >
-                {manualSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <WhatsAppIcon className="w-5 h-5" />}
-                {manualSaving ? "Saving…" : "Save & Connect"}
+                {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <WhatsAppIcon className="w-5 h-5" />}
+                {saving ? "Connecting…" : "Connect WhatsApp"}
               </Button>
 
               <div className="flex gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
                 <AlertTriangle className="w-5 h-5 shrink-0 text-yellow-500 mt-0.5" />
                 <p className="text-xs text-yellow-200 leading-relaxed">
-                  The phone number you connect cannot be used on the regular WhatsApp app simultaneously. Use a dedicated business number.
+                  For the sandbox, your customers must first send{" "}
+                  <strong className="text-yellow-100">join [your-sandbox-keyword]</strong> to +14155238886
+                  before they can receive messages. This is only for testing. A paid Twilio number removes this requirement.
                 </p>
               </div>
-            </TabsContent>
-
-            {/* ── Embedded Signup tab ── */}
-            <TabsContent value="embedded" className="space-y-5 pt-4">
-              <ol className="space-y-4">
-                {[
-                  { step: 1, text: "Click the button below to open Meta's secure signup" },
-                  { step: 2, text: "Enter your business phone number and verify with the OTP Meta sends you" },
-                  { step: 3, text: "Done — your AI agent will now reply to customers on WhatsApp automatically" },
-                ].map(({ step, text }) => (
-                  <li key={step} className="flex gap-3">
-                    <div className="shrink-0 w-7 h-7 rounded-full bg-[#25D366]/20 text-[#25D366] flex items-center justify-center text-sm font-bold">
-                      {step}
-                    </div>
-                    <p className="text-sm text-muted-foreground pt-0.5">{text}</p>
-                  </li>
-                ))}
-              </ol>
-
-              <Button
-                id="whatsapp-signup-btn"
-                size="lg"
-                className="w-full gap-2 bg-[#25D366] hover:bg-[#1da851] text-white text-base"
-                onClick={handleStartSetup}
-                disabled={connecting}
-              >
-                {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <WhatsAppIcon className="w-5 h-5" />}
-                {connecting ? "Waiting for Meta popup…" : "Start WhatsApp Setup"}
-              </Button>
-
-              {connecting && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-muted-foreground"
-                  onClick={() => {
-                    if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
-                    setConnecting(false);
-                  }}
-                >
-                  Cancel
-                </Button>
-              )}
-
-              <p className="text-xs text-center text-muted-foreground">
-                This takes about 3 minutes and happens only once.
-              </p>
-
-              <div className="flex gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
-                <AlertTriangle className="w-5 h-5 shrink-0 text-yellow-500 mt-0.5" />
-                <p className="text-xs text-yellow-200 leading-relaxed">
-                  The phone number you connect cannot be used on the WhatsApp app
-                  simultaneously. We recommend using a dedicated business number.
-                </p>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
