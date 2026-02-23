@@ -46,22 +46,18 @@ export default function SellerWhatsApp() {
     }
     setSaving(true);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const jwt = sessionData.session?.access_token;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke("whatsapp-connect", {
+        body: {
           account_sid: accountSid.trim(),
           auth_token:  authToken.trim(),
           seller_id:   seller!.id,
-        }),
+        },
       });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error ?? "Connection failed");
+      if (error) throw new Error(error.message ?? "Connection failed");
+      if (data?.error) throw new Error(data.error);
 
       // Move to step 2 — show the join instructions
-      setJoinKeyword(result.join_keyword ?? "");
+      setJoinKeyword(data?.join_keyword ?? "");
       setStep(2);
     } catch (err: unknown) {
       toast({ title: "Connection failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
