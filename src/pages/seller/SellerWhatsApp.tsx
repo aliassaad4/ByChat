@@ -1,20 +1,15 @@
 import { useState } from "react";
 import {
-  Loader2, AlertTriangle, Copy, Check, Unplug,
-  Info, Phone, ExternalLink, MessageSquare,
+  Loader2, AlertTriangle, Check, Unplug,
+  Info, Phone, MessageSquare, Wifi,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useSellerProfile } from "@/hooks/useSellerProfile";
 import { useQueryClient } from "@tanstack/react-query";
-
-const SUPABASE_URL   = import.meta.env.VITE_SUPABASE_URL || "https://epoqhtjaqmwqmapfrcwn.supabase.co";
-const SANDBOX_NUMBER = "+14155238886";
 
 const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -22,51 +17,45 @@ const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   </svg>
 );
 
+const SANDBOX_NUMBER = "+14155238886";
+
 export default function SellerWhatsApp() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: seller, isLoading } = useSellerProfile();
 
-  // Step 1 = enter credentials, Step 2 = join sandbox
-  const [step, setStep]               = useState<1 | 2>(1);
-  const [accountSid, setAccountSid]   = useState("");
-  const [authToken, setAuthToken]     = useState("");
-  const [saving, setSaving]           = useState(false);
+  const [step, setStep]             = useState<1 | 2>(1);
+  const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [joinKeyword, setJoinKeyword] = useState("");  // returned by backend
-  const [copiedJoin, setCopiedJoin]   = useState(false);
+  const [joinKeyword, setJoinKeyword] = useState("");
+  const [copiedJoin, setCopiedJoin] = useState(false);
 
   const isConnected = !!seller?.whatsapp_connected;
 
-  /* ── Step 1: submit credentials → backend auto-configures webhook ── */
+  /* ── Connect: backend uses ByChat's Twilio account ── */
   async function handleConnect() {
-    if (!accountSid.trim() || !authToken.trim()) {
-      toast({ title: "Missing fields", description: "Enter your Account SID and Auth Token.", variant: "destructive" });
-      return;
-    }
-    setSaving(true);
+    setConnecting(true);
     try {
       const { data, error } = await supabase.functions.invoke("whatsapp-connect", {
-        body: {
-          account_sid: accountSid.trim(),
-          auth_token:  authToken.trim(),
-          seller_id:   seller!.id,
-        },
+        body: { seller_id: seller!.id },
       });
       if (error) throw new Error(error.message ?? "Connection failed");
       if (data?.error) throw new Error(data.error);
 
-      // Move to step 2 — show the join instructions
       setJoinKeyword(data?.join_keyword ?? "");
       setStep(2);
     } catch (err: unknown) {
-      toast({ title: "Connection failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+      toast({
+        title: "Connection failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
     } finally {
-      setSaving(false);
+      setConnecting(false);
     }
   }
 
-  /* ── Step 2: seller confirmed they sent the join message ── */
+  /* ── Seller confirmed they sent the join message ── */
   async function handleJoinConfirmed() {
     await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
     toast({ title: "WhatsApp connected!", description: "Your AI agent is now live on WhatsApp." });
@@ -74,7 +63,6 @@ export default function SellerWhatsApp() {
 
   /* ── Disconnect ── */
   async function handleDisconnect() {
-    if (!seller) return;
     setDisconnecting(true);
     try {
       const { error } = await supabase
@@ -86,11 +74,10 @@ export default function SellerWhatsApp() {
           twilio_auth_token:     null,
           twilio_from_number:    null,
         })
-        .eq("id", seller.id);
+        .eq("id", seller!.id);
       if (error) throw error;
       await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
       setStep(1);
-      setAccountSid(""); setAuthToken("");
       toast({ title: "Disconnected", description: "WhatsApp has been disconnected." });
     } catch (err: unknown) {
       toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
@@ -99,9 +86,8 @@ export default function SellerWhatsApp() {
     }
   }
 
-  function copyJoinMessage() {
-    const msg = joinKeyword ? `join ${joinKeyword}` : `join <your-keyword>`;
-    navigator.clipboard.writeText(msg);
+  function copyJoin() {
+    navigator.clipboard.writeText(joinKeyword ? `join ${joinKeyword}` : "join <keyword>");
     setCopiedJoin(true);
     setTimeout(() => setCopiedJoin(false), 2000);
   }
@@ -114,20 +100,16 @@ export default function SellerWhatsApp() {
     );
   }
 
-  /* ════════════════════════════════════════
-     CONNECTED STATE
-  ════════════════════════════════════════ */
+  /* ════ CONNECTED ════ */
   if (isConnected) {
     return (
-      <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6 max-w-xl">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <WhatsAppIcon className="w-6 h-6 text-[#25D366]" />
-            WhatsApp Integration
+            WhatsApp
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Your AI agent is live and replying to customers automatically.
-          </p>
+          <p className="text-muted-foreground text-sm mt-1">Your AI agent is live on WhatsApp.</p>
         </div>
 
         <Card className="glass-card border-[#25D366]/30">
@@ -151,7 +133,7 @@ export default function SellerWhatsApp() {
             <div className="flex gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
               <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Customers who message this number on WhatsApp will receive instant AI replies based on your store products and settings.
+                Customers who message this number on WhatsApp will get instant AI replies based on your store products and settings.
               </p>
             </div>
 
@@ -172,167 +154,99 @@ export default function SellerWhatsApp() {
     );
   }
 
-  /* ════════════════════════════════════════
-     STEP 1 — ENTER CREDENTIALS
-  ════════════════════════════════════════ */
+  /* ════ STEP 1 — ONE BUTTON ════ */
   if (step === 1) {
     return (
-      <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6 max-w-xl">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <WhatsAppIcon className="w-6 h-6 text-[#25D366]" />
             Connect WhatsApp
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            3 simple steps — takes about 5 minutes.
+            Let your AI agent reply to customers on WhatsApp automatically.
           </p>
         </div>
 
-        {/* Step indicators */}
-        <div className="flex items-center gap-3">
-          {[1, 2, 3].map((n) => (
-            <div key={n} className="flex items-center gap-3">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${n === 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                {n}
-              </div>
-              {n < 3 && <div className="w-10 h-px bg-border" />}
-            </div>
-          ))}
-          <p className="text-sm text-muted-foreground ml-2">Create account → Connect → Activate</p>
-        </div>
-
-        {/* Step 1 instruction */}
-        <Card className="glass-card border-primary/30">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-primary">
-              <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</span>
-              Get your free Twilio account
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>Twilio is the service that connects your WhatsApp. It's free to sign up.</p>
-            <ol className="space-y-1.5 list-decimal list-inside text-xs">
-              <li>Click the button below to open Twilio</li>
-              <li>Sign up with your email</li>
-              <li>On the dashboard homepage, copy your <strong className="text-foreground">Account SID</strong> and <strong className="text-foreground">Auth Token</strong></li>
-            </ol>
-            <a
-              href="https://www.twilio.com/try-twilio"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#F22F46] hover:bg-[#d42940] text-white text-sm font-medium transition-colors"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Open Twilio Sign Up
-            </a>
-          </CardContent>
-        </Card>
-
-        {/* Credentials form */}
         <Card className="glass-card border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">2</span>
-              Paste your credentials
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="account-sid">Account SID</Label>
-              <Input
-                id="account-sid"
-                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                value={accountSid}
-                onChange={e => setAccountSid(e.target.value)}
-              />
+          <CardContent className="p-6 space-y-5">
+            <div className="flex gap-3">
+              <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                ByChat will assign you a WhatsApp number instantly. Customers can message that number and your AI agent will reply 24/7 — no extra setup on your side.
+              </p>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="auth-token">Auth Token</Label>
-              <Input
-                id="auth-token"
-                type="password"
-                placeholder="Your Twilio Auth Token"
-                value={authToken}
-                onChange={e => setAuthToken(e.target.value)}
-              />
+
+            <div className="space-y-3">
+              {[
+                { icon: Wifi, text: "A WhatsApp number is assigned to your store" },
+                { icon: MessageSquare, text: "Customers message it, AI replies automatically" },
+                { icon: Check, text: "Works with your existing store products and AI settings" },
+              ].map(({ icon: Icon, text }, i) => (
+                <div key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <div className="w-7 h-7 rounded-full bg-[#25D366]/10 flex items-center justify-center shrink-0">
+                    <Icon className="w-3.5 h-3.5 text-[#25D366]" />
+                  </div>
+                  {text}
+                </div>
+              ))}
             </div>
 
             <Button
               size="lg"
-              className="w-full gap-2 bg-[#25D366] hover:bg-[#1da851] text-white"
+              className="w-full gap-2 bg-[#25D366] hover:bg-[#1da851] text-white text-base"
               onClick={handleConnect}
-              disabled={saving}
+              disabled={connecting}
             >
-              {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <WhatsAppIcon className="w-5 h-5" />}
-              {saving ? "Setting up…" : "Connect WhatsApp"}
+              {connecting
+                ? <Loader2 className="w-5 h-5 animate-spin" />
+                : <WhatsAppIcon className="w-5 h-5" />}
+              {connecting ? "Setting up your number…" : "Connect WhatsApp"}
             </Button>
-
-            <p className="text-xs text-center text-muted-foreground">
-              We automatically configure everything in Twilio — no extra steps in their console.
-            </p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  /* ════════════════════════════════════════
-     STEP 2 — JOIN SANDBOX
-  ════════════════════════════════════════ */
+  /* ════ STEP 2 — SEND JOIN MESSAGE ════ */
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-xl">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <WhatsAppIcon className="w-6 h-6 text-[#25D366]" />
           One Last Step
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Activate your WhatsApp connection from your phone.
-        </p>
-      </div>
-
-      {/* Step indicators */}
-      <div className="flex items-center gap-3">
-        {[1, 2, 3].map((n) => (
-          <div key={n} className="flex items-center gap-3">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${n < 3 ? "bg-primary text-primary-foreground" : "bg-primary text-primary-foreground"}`}>
-              {n < 3 ? <Check className="w-4 h-4" /> : n}
-            </div>
-            {n < 3 && <div className="w-10 h-px bg-primary" />}
-          </div>
-        ))}
-        <p className="text-sm text-primary font-medium ml-2">Almost done!</p>
+        <p className="text-muted-foreground text-sm mt-1">Activate your number from your phone.</p>
       </div>
 
       <Card className="glass-card border-[#25D366]/30">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <MessageSquare className="w-5 h-5 text-[#25D366]" />
-            Send this message from your WhatsApp
+            Send this activation message from WhatsApp
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Open WhatsApp on your phone, start a new chat with the number below, and send the activation message exactly as shown.
+            Open WhatsApp on your phone, send the message below to activate your store's WhatsApp number. This is a one-time step.
           </p>
 
-          <div className="space-y-3">
-            <div className="rounded-lg bg-muted p-4 space-y-2">
-              <p className="text-xs text-muted-foreground">Send to this number:</p>
-              <p className="text-lg font-bold">{SANDBOX_NUMBER}</p>
-            </div>
+          <div className="rounded-lg bg-muted p-4 space-y-1">
+            <p className="text-xs text-muted-foreground">Send to:</p>
+            <p className="text-xl font-bold tracking-wide">{SANDBOX_NUMBER}</p>
+          </div>
 
-            <div className="rounded-lg bg-muted p-4 space-y-2">
-              <p className="text-xs text-muted-foreground">Your activation message:</p>
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-lg font-bold font-mono">
-                  {joinKeyword ? `join ${joinKeyword}` : "join <your-keyword>"}
-                </p>
-                <Button variant="outline" size="sm" onClick={copyJoinMessage} className="shrink-0 gap-1.5">
-                  {copiedJoin ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copiedJoin ? "Copied!" : "Copy"}
-                </Button>
-              </div>
+          <div className="rounded-lg bg-muted p-4 space-y-1">
+            <p className="text-xs text-muted-foreground">Your activation message:</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xl font-bold font-mono">
+                {joinKeyword ? `join ${joinKeyword}` : "join <your-keyword>"}
+              </p>
+              <Button variant="outline" size="sm" onClick={copyJoin} className="shrink-0 gap-1.5">
+                {copiedJoin ? <Check className="w-3.5 h-3.5 text-green-500" /> : null}
+                {copiedJoin ? "Copied!" : "Copy"}
+              </Button>
             </div>
           </div>
 
@@ -340,26 +254,21 @@ export default function SellerWhatsApp() {
             href={`https://wa.me/${SANDBOX_NUMBER.replace("+", "")}?text=${encodeURIComponent(joinKeyword ? `join ${joinKeyword}` : "")}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-[#25D366] hover:bg-[#1da851] text-white text-sm font-medium transition-colors"
+            className="flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-[#25D366] hover:bg-[#1da851] text-white text-sm font-semibold transition-colors"
           >
             <WhatsAppIcon className="w-4 h-4" />
             Open WhatsApp &amp; Send Activation
           </a>
 
-          <Button
-            size="lg"
-            variant="outline"
-            className="w-full gap-2"
-            onClick={handleJoinConfirmed}
-          >
+          <Button size="lg" variant="outline" className="w-full gap-2" onClick={handleJoinConfirmed}>
             <Check className="w-5 h-5 text-[#25D366]" />
-            I sent the message — Done!
+            I sent it — I'm done!
           </Button>
 
           <div className="flex gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
-            <AlertTriangle className="w-5 h-5 shrink-0 text-yellow-500 mt-0.5" />
+            <AlertTriangle className="w-4 h-4 shrink-0 text-yellow-500 mt-0.5" />
             <p className="text-xs text-yellow-200 leading-relaxed">
-              This activation is a one-time step required by WhatsApp's testing environment. Your customers will also need to send this join message once before receiving messages.
+              This is a testing number. Your customers need to send the same activation message once before they can chat with you. When ByChat launches fully, each store gets a dedicated number automatically — no activation needed.
             </p>
           </div>
         </CardContent>
