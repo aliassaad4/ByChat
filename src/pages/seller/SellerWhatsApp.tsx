@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSellerProfile } from "@/hooks/useSellerProfile";
 import { useQueryClient } from "@tanstack/react-query";
 
-const SUPABASE_URL   = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_URL   = import.meta.env.VITE_SUPABASE_URL || "https://epoqhtjaqmwqmapfrcwn.supabase.co";
 const SANDBOX_NUMBER = "+14155238886";
 
 const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
