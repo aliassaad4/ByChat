@@ -15,6 +15,7 @@ import SellerPlaceholder from "./pages/seller/SellerPlaceholder";
 import SellerAISettings from "./pages/seller/SellerAISettings";
 import SellerIntegrations from "./pages/seller/SellerIntegrations";
 import SellerWhatsApp from "./pages/seller/SellerWhatsApp";
+import SellerShopify from "./pages/seller/SellerShopify";
 import BuyerLayout from "./layouts/BuyerLayout";
 import BuyerHome from "./pages/buyer/BuyerHome";
 import BrowseShops from "./pages/buyer/BrowseShops";
@@ -45,6 +46,7 @@ const App = () => (
             <Route path="ai-settings" element={<SellerAISettings />} />
             <Route path="integrations" element={<SellerIntegrations />} />
             <Route path="whatsapp" element={<SellerWhatsApp />} />
+            <Route path="shopify" element={<SellerShopify />} />
             <Route path="settings" element={<SellerPlaceholder />} />
           </Route>
 

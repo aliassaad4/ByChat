@@ -180,6 +180,9 @@ export type Database = {
           name: string
           price: number
           seller_id: string
+          shopify_product_id: string | null
+          shopify_variant_id: string | null
+          source: string
           updated_at: string
         }
         Insert: {
@@ -192,6 +195,9 @@ export type Database = {
           name: string
           price?: number
           seller_id: string
+          shopify_product_id?: string | null
+          shopify_variant_id?: string | null
+          source?: string
           updated_at?: string
         }
         Update: {
@@ -204,6 +210,9 @@ export type Database = {
           name?: string
           price?: number
           seller_id?: string
+          shopify_product_id?: string | null
+          shopify_variant_id?: string | null
+          source?: string
           updated_at?: string
         }
         Relationships: [
@@ -233,6 +242,10 @@ export type Database = {
           id: string
           instagram_handle: string | null
           phone_number: string
+          shopify_access_token: string | null
+          shopify_connected: boolean
+          shopify_last_sync_at: string | null
+          shopify_store_url: string | null
           updated_at: string
           user_id: string
           whatsapp_number: string
@@ -263,6 +276,10 @@ export type Database = {
           id?: string
           instagram_handle?: string | null
           phone_number: string
+          shopify_access_token?: string | null
+          shopify_connected?: boolean
+          shopify_last_sync_at?: string | null
+          shopify_store_url?: string | null
           updated_at?: string
           user_id: string
           whatsapp_number: string
@@ -293,6 +310,10 @@ export type Database = {
           id?: string
           instagram_handle?: string | null
           phone_number?: string
+          shopify_access_token?: string | null
+          shopify_connected?: boolean
+          shopify_last_sync_at?: string | null
+          shopify_store_url?: string | null
           updated_at?: string
           user_id?: string
           whatsapp_number?: string

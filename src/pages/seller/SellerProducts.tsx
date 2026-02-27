@@ -19,6 +19,9 @@ export type Product = {
   category: string;
   image_urls: string[];
   is_available: boolean;
+  source: string;
+  shopify_product_id: string | null;
+  shopify_variant_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -101,7 +104,14 @@ export default function SellerProducts() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold">{product.name}</h3>
-                    <Badge variant="outline" className="mt-1 text-xs">{product.category}</Badge>
+                    <div className="flex items-center gap-1 mt-1">
+                      <Badge variant="outline" className="text-xs">{product.category}</Badge>
+                      {product.source === "shopify" && (
+                        <Badge className="bg-[#96BF48]/20 text-[#96BF48] border-[#96BF48]/30 text-xs">
+                          Shopify
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <span className="text-lg font-bold text-primary">${Number(product.price).toFixed(2)}</span>
                 </div>
@@ -121,17 +131,25 @@ export default function SellerProducts() {
                     </span>
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => deleteProduct.mutate(product.id)}
-                      className="hover:text-destructive"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    {product.source === "shopify" ? (
+                      <span className="text-xs text-muted-foreground italic px-2 py-1">
+                        Edit on Shopify
+                      </span>
+                    ) : (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteProduct.mutate(product.id)}
+                          className="hover:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </CardContent>

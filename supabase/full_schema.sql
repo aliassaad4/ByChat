@@ -224,3 +224,28 @@ USING (bucket_id = 'product-images');
 CREATE POLICY "Users can delete their own product images"
 ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'product-images');
+
+-- ========== SHOPIFY INTEGRATION ==========
+
+-- Add Shopify connection fields to sellers table
+ALTER TABLE public.sellers
+  ADD COLUMN IF NOT EXISTS shopify_store_url TEXT,
+  ADD COLUMN IF NOT EXISTS shopify_access_token TEXT,
+  ADD COLUMN IF NOT EXISTS shopify_connected BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS shopify_last_sync_at TIMESTAMPTZ;
+
+-- Add source tracking fields to products table
+ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual',
+  ADD COLUMN IF NOT EXISTS shopify_product_id TEXT,
+  ADD COLUMN IF NOT EXISTS shopify_variant_id TEXT;
+
+ALTER TABLE public.products
+  ADD CONSTRAINT products_source_check CHECK (source IN ('manual', 'shopify'));
+
+CREATE INDEX IF NOT EXISTS idx_products_shopify_product_id
+  ON public.products (shopify_product_id)
+  WHERE shopify_product_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_products_seller_source
+  ON public.products (seller_id, source);

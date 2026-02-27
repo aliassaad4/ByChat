@@ -8,6 +8,7 @@ import {
   Settings,
   LogOut,
   MessageSquare,
+  ShoppingBag,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,6 +36,7 @@ const mainNav = [
 const settingsNav = [
   { title: "AI Agent Settings", url: "/seller/ai-settings", icon: Bot },
   { title: "WhatsApp", url: "/seller/whatsapp", icon: MessageSquare },
+  { title: "Shopify", url: "/seller/shopify", icon: ShoppingBag },
   { title: "Integrations", url: "/seller/integrations", icon: Plug },
   { title: "Settings", url: "/seller/settings", icon: Settings },
 ];
