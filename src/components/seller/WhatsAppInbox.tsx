@@ -28,6 +28,19 @@ function formatTime(ts: string) {
     : d.toLocaleDateString([], { day: "2-digit", month: "short" });
 }
 
+/** Extract clean text from message body — handles raw JSON like {"response":"..."} */
+function cleanMessageBody(body: string): string {
+  if (!body) return "";
+  const trimmed = body.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed.response ?? parsed.message ?? parsed.text ?? parsed.reply ?? trimmed;
+    } catch { /* not valid JSON, return as-is */ }
+  }
+  return trimmed;
+}
+
 export function WhatsAppInbox({ sellerId }: { sellerId: string }) {
   const queryClient = useQueryClient();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
@@ -113,7 +126,7 @@ export function WhatsAppInbox({ sellerId }: { sellerId: string }) {
   }
 
   return (
-    <div className="flex h-[600px] rounded-xl overflow-hidden border border-border glass-card">
+    <div className="flex h-[calc(100vh-180px)] rounded-xl overflow-hidden border border-border glass-card">
 
       {/* ── LEFT: Conversation list ── */}
       <div className={cn(
@@ -152,7 +165,7 @@ export function WhatsAppInbox({ sellerId }: { sellerId: string }) {
                     <p className="text-sm font-medium truncate">{conv.customer_phone}</p>
                     <p className="text-[10px] text-muted-foreground shrink-0">{formatTime(conv.last_at)}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">{conv.last_message}</p>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">{cleanMessageBody(conv.last_message)}</p>
                 </div>
               </button>
             ))
@@ -211,7 +224,7 @@ export function WhatsAppInbox({ sellerId }: { sellerId: string }) {
                           : "bg-card text-foreground rounded-bl-sm border border-border"
                       )}
                     >
-                      <p className="leading-relaxed">{msg.body}</p>
+                      <p className="leading-relaxed">{cleanMessageBody(msg.body)}</p>
                       <p className={cn(
                         "text-[10px] mt-1 text-right",
                         msg.direction === "outbound" ? "text-white/70" : "text-muted-foreground"

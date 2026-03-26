@@ -194,49 +194,42 @@ export default function SellerWhatsApp() {
   if (isConnected) {
     const isMeta = !!seller?.whatsapp_phone_id;
     return (
-      <div className="space-y-6 max-w-xl">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <WhatsAppIcon className="w-6 h-6 text-[#25D366]" />
-            WhatsApp
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">Your AI agent is live on WhatsApp.</p>
-        </div>
-
-        <Card className="glass-card border-[#25D366]/30">
-          <CardContent className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#25D366] flex items-center justify-center">
-                  <WhatsAppIcon className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="font-semibold">WhatsApp Connected</p>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                    <Phone className="w-3.5 h-3.5" />
-                    {seller?.whatsapp_phone_number ?? SANDBOX_NUMBER}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    via {isMeta ? "Meta WhatsApp Business API" : "ByChat (Twilio)"}
-                  </p>
-                </div>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <WhatsAppIcon className="w-6 h-6 text-[#25D366]" />
+              WhatsApp
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">Your AI agent is live on WhatsApp.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-[#25D366] flex items-center justify-center">
+                <WhatsAppIcon className="w-4 h-4 text-white" />
               </div>
-              <Badge className="bg-[#25D366]/20 text-[#25D366] border-[#25D366]/30">Active</Badge>
+              <div>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Phone className="w-3 h-3" />
+                  {seller?.whatsapp_phone_number ?? SANDBOX_NUMBER}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {isMeta ? "Meta API" : "Twilio"}
+                </p>
+              </div>
             </div>
-
-            <div className="pt-2 border-t border-border">
-              <Button
-                variant="outline" size="sm"
-                className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
-                onClick={handleDisconnect}
-                disabled={disconnecting}
-              >
-                {disconnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unplug className="w-4 h-4" />}
-                Disconnect WhatsApp
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            <Badge className="bg-[#25D366]/20 text-[#25D366] border-[#25D366]/30">Active</Badge>
+            <Button
+              variant="outline" size="sm"
+              className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+            >
+              {disconnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unplug className="w-3.5 h-3.5" />}
+              Disconnect
+            </Button>
+          </div>
+        </div>
 
         <WhatsAppInbox sellerId={seller!.id} />
       </div>
