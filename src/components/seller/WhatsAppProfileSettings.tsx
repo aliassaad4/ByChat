@@ -49,12 +49,13 @@ export function WhatsAppProfileSettings({ phoneNumberId, accessToken, onBack }: 
     fetchProfile();
   }, []);
 
+  const PROXY = "https://epoqhtjaqmwqmapfrcwn.supabase.co/functions/v1/whatsapp-profile";
+
   async function fetchProfile() {
     setLoading(true);
     try {
       const res = await fetch(
-        `https://graph.facebook.com/v21.0/${phoneNumberId}/whatsapp_business_profile?fields=about,description,address,email,websites,profile_picture_url,vertical`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+        `${PROXY}?phone_number_id=${phoneNumberId}&token=${encodeURIComponent(accessToken)}`
       );
       const data = await res.json();
       if (data.data?.[0]) {
@@ -92,22 +93,16 @@ export function WhatsAppProfileSettings({ phoneNumberId, accessToken, onBack }: 
         vertical,
       };
 
-      const res = await fetch(
-        `https://graph.facebook.com/v21.0/${phoneNumberId}/whatsapp_business_profile`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
-        }
-      );
+      const res = await fetch(PROXY, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone_number_id: phoneNumberId, token: accessToken, ...body }),
+      });
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && !data.error) {
         toast.success("WhatsApp profile updated!");
       } else {
-        toast.error(data.error?.message || "Failed to update profile");
+        toast.error(data.error?.message || data.error || "Failed to update profile");
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to save");
@@ -131,62 +126,19 @@ export function WhatsAppProfileSettings({ phoneNumberId, accessToken, onBack }: 
 
     setUploadingPic(true);
     try {
-      const fileBytes = await file.arrayBuffer();
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("phone_number_id", phoneNumberId);
+      formData.append("token", accessToken);
 
-      // Step 1: Create upload session via Resumable Upload API
-      const sessionRes = await fetch(
-        `https://graph.facebook.com/v21.0/app/uploads?file_length=${file.size}&file_type=${encodeURIComponent(file.type)}&file_name=${encodeURIComponent(file.name)}&access_token=${accessToken}`,
-        { method: "POST" }
-      );
-      const sessionData = await sessionRes.json();
+      const res = await fetch(PROXY, { method: "POST", body: formData });
+      const data = await res.json();
 
-      if (!sessionRes.ok || !sessionData.id) {
-        toast.error(sessionData.error?.message || "Failed to create upload session");
-        return;
-      }
-
-      // Step 2: Upload file data
-      const uploadRes = await fetch(
-        `https://graph.facebook.com/v21.0/${sessionData.id}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `OAuth ${accessToken}`,
-            "Content-Type": file.type,
-            file_offset: "0",
-          },
-          body: fileBytes,
-        }
-      );
-      const uploadData = await uploadRes.json();
-
-      if (!uploadRes.ok || !uploadData.h) {
-        toast.error(uploadData.error?.message || "Failed to upload file");
-        return;
-      }
-
-      // Step 3: Set as profile picture using the handle
-      const profileRes = await fetch(
-        `https://graph.facebook.com/v21.0/${phoneNumberId}/whatsapp_business_profile`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            messaging_product: "whatsapp",
-            profile_picture_handle: uploadData.h,
-          }),
-        }
-      );
-
-      if (profileRes.ok) {
+      if (res.ok && data.success) {
         toast.success("Profile picture updated!");
         setTimeout(fetchProfile, 2000);
       } else {
-        const err = await profileRes.json();
-        toast.error(err.error?.message || "Failed to set profile picture");
+        toast.error(data.error || "Failed to upload profile picture");
       }
     } catch (err: any) {
       toast.error(err.message || "Upload failed");
