@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSellerProfile } from "@/hooks/useSellerProfile";
 import { useQueryClient } from "@tanstack/react-query";
 import { WhatsAppInbox } from "@/components/seller/WhatsAppInbox";
+import { WhatsAppProfileSettings } from "@/components/seller/WhatsAppProfileSettings";
 
 const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -32,6 +33,7 @@ export default function SellerWhatsApp() {
   const { data: seller, isLoading } = useSellerProfile();
 
   const [method, setMethod] = useState<ConnectionMethod>(null);
+  const [showProfile, setShowProfile] = useState(false);
 
   // ByChat/Twilio state
   const [step, setStep] = useState<1 | 2>(1);
@@ -193,6 +195,17 @@ export default function SellerWhatsApp() {
      ════════════════════════════════════════════════ */
   if (isConnected) {
     const isMeta = !!seller?.whatsapp_phone_id;
+
+    if (showProfile && seller?.whatsapp_phone_id && seller?.whatsapp_access_token) {
+      return (
+        <WhatsAppProfileSettings
+          phoneNumberId={seller.whatsapp_phone_id}
+          accessToken={seller.whatsapp_access_token}
+          onBack={() => setShowProfile(false)}
+        />
+      );
+    }
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -219,6 +232,16 @@ export default function SellerWhatsApp() {
               </div>
             </div>
             <Badge className="bg-[#25D366]/20 text-[#25D366] border-[#25D366]/30">Active</Badge>
+            {isMeta && (
+              <Button
+                variant="outline" size="sm"
+                className="gap-1.5"
+                onClick={() => setShowProfile(true)}
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                Profile
+              </Button>
+            )}
             <Button
               variant="outline" size="sm"
               className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
