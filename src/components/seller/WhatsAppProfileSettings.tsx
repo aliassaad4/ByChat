@@ -131,27 +131,41 @@ export function WhatsAppProfileSettings({ phoneNumberId, accessToken, onBack }: 
 
     setUploadingPic(true);
     try {
-      // Step 1: Upload image to Meta
-      const uploadForm = new FormData();
-      uploadForm.append("file", file);
-      uploadForm.append("messaging_product", "whatsapp");
+      const fileBytes = await file.arrayBuffer();
 
+      // Step 1: Create upload session via Resumable Upload API
+      const sessionRes = await fetch(
+        `https://graph.facebook.com/v21.0/app/uploads?file_length=${file.size}&file_type=${encodeURIComponent(file.type)}&file_name=${encodeURIComponent(file.name)}&access_token=${accessToken}`,
+        { method: "POST" }
+      );
+      const sessionData = await sessionRes.json();
+
+      if (!sessionRes.ok || !sessionData.id) {
+        toast.error(sessionData.error?.message || "Failed to create upload session");
+        return;
+      }
+
+      // Step 2: Upload file data
       const uploadRes = await fetch(
-        `https://graph.facebook.com/v21.0/${phoneNumberId}/media`,
+        `https://graph.facebook.com/v21.0/${sessionData.id}`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}` },
-          body: uploadForm,
+          headers: {
+            Authorization: `OAuth ${accessToken}`,
+            "Content-Type": file.type,
+            file_offset: "0",
+          },
+          body: fileBytes,
         }
       );
       const uploadData = await uploadRes.json();
 
-      if (!uploadRes.ok || !uploadData.id) {
-        toast.error(uploadData.error?.message || "Failed to upload image");
+      if (!uploadRes.ok || !uploadData.h) {
+        toast.error(uploadData.error?.message || "Failed to upload file");
         return;
       }
 
-      // Step 2: Set as profile picture
+      // Step 3: Set as profile picture using the handle
       const profileRes = await fetch(
         `https://graph.facebook.com/v21.0/${phoneNumberId}/whatsapp_business_profile`,
         {
@@ -162,14 +176,13 @@ export function WhatsAppProfileSettings({ phoneNumberId, accessToken, onBack }: 
           },
           body: JSON.stringify({
             messaging_product: "whatsapp",
-            profile_picture_handle: uploadData.id,
+            profile_picture_handle: uploadData.h,
           }),
         }
       );
 
       if (profileRes.ok) {
         toast.success("Profile picture updated!");
-        // Refresh profile to get new URL
         setTimeout(fetchProfile, 2000);
       } else {
         const err = await profileRes.json();
