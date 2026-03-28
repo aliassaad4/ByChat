@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSellerProfile } from "@/hooks/useSellerProfile";
 import {
   BookOpen, MessageSquare, Plus, Trash2, ShieldCheck, Truck, DollarSign,
-  Sparkles, Bot, Globe, SmilePlus, ShoppingCart, Receipt, MapPin, Save, Package, Loader2
+  Sparkles, Bot, Globe, SmilePlus, ShoppingCart, Receipt, MapPin, Save, Package, Loader2, Upload, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
 type FaqItem = { question: string; answer: string };
+type ChatExample = { customer: string; seller: string };
 
 type AgentConfig = {
   id?: string;
@@ -35,6 +36,7 @@ type AgentConfig = {
   can_take_orders: boolean;
   can_give_quotes: boolean;
   collect_delivery_address: boolean;
+  chat_examples: ChatExample[];
 };
 
 const defaultConfig = (sellerId: string): AgentConfig => ({
@@ -52,6 +54,7 @@ const defaultConfig = (sellerId: string): AgentConfig => ({
   can_take_orders: true,
   can_give_quotes: true,
   collect_delivery_address: true,
+  chat_examples: [],
 });
 
 export default function SellerAISettings() {
@@ -93,6 +96,7 @@ export default function SellerAISettings() {
           ...existingConfig,
           faq: (existingConfig.faq as FaqItem[] | null) ?? [],
           minimum_order_amount: Number(existingConfig.minimum_order_amount),
+          chat_examples: ((existingConfig as any).chat_examples as ChatExample[] | null) ?? [],
         } as AgentConfig);
       } else if (!isLoading) {
         setConfig(defaultConfig(seller.id));
@@ -457,6 +461,138 @@ export default function SellerAISettings() {
         </CardContent>
       </Card>
 
+      {/* Section 4: Chat Style Examples */}
+      <Card className="glass-card border-border">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <MessageSquare className="w-5 h-5 text-primary" />
+            Response Style (Few-Shot Examples)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Upload a WhatsApp chat export (.txt) to teach the AI how you respond to customers.
+            The AI will learn your tone, style, and typical replies.
+          </p>
+
+          <div className="space-y-3">
+            <label className="cursor-pointer">
+              <Button variant="outline" size="sm" className="gap-2" asChild>
+                <span>
+                  <Upload className="w-4 h-4" />
+                  Upload WhatsApp Chat Export (.txt)
+                </span>
+              </Button>
+              <input
+                type="file"
+                accept=".txt,.zip"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    let text = "";
+                    if (file.name.endsWith(".txt")) {
+                      text = await file.text();
+                    } else {
+                      toast.error("Please export chat as .txt from WhatsApp (without media)");
+                      return;
+                    }
+                    const examples = parseWhatsAppChat(text);
+                    if (examples.length === 0) {
+                      toast.error("Could not extract any conversation pairs from the file");
+                      return;
+                    }
+                    update("chat_examples", [...(config.chat_examples || []), ...examples].slice(0, 30));
+                    toast.success(`Extracted ${examples.length} example${examples.length > 1 ? "s" : ""} from chat`);
+                  } catch (err) {
+                    toast.error("Failed to parse chat file");
+                  }
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <p className="text-xs text-muted-foreground">
+              How to export: WhatsApp → Open chat → Menu (⋮) → More → Export Chat → Without Media
+            </p>
+          </div>
+
+          {config.chat_examples && config.chat_examples.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">{config.chat_examples.length} example{config.chat_examples.length !== 1 ? "s" : ""} loaded</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive text-xs"
+                  onClick={() => update("chat_examples", [])}
+                >
+                  Clear All
+                </Button>
+              </div>
+              <div className="max-h-64 overflow-y-auto space-y-2">
+                {config.chat_examples.map((ex, i) => (
+                  <div key={i} className="rounded-lg border border-border bg-muted/20 p-3 text-xs space-y-1.5 relative group">
+                    <button
+                      className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/20 transition-opacity"
+                      onClick={() => update("chat_examples", config.chat_examples.filter((_, j) => j !== i))}
+                    >
+                      <X className="w-3 h-3 text-destructive" />
+                    </button>
+                    <div>
+                      <span className="text-muted-foreground font-medium">Customer:</span>{" "}
+                      <span>{ex.customer}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#25D366] font-medium">You:</span>{" "}
+                      <span>{ex.seller}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Separator />
+
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Or add examples manually</p>
+            <div className="grid gap-2">
+              <Input
+                id="manual-customer"
+                placeholder="Customer message (e.g. 'do you have this in red?')"
+                className="text-sm"
+              />
+              <Input
+                id="manual-seller"
+                placeholder="Your ideal response (e.g. 'eh akeed 3enna bel ahmar w bel aswad')"
+                className="text-sm"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 w-fit"
+                onClick={() => {
+                  const custEl = document.getElementById("manual-customer") as HTMLInputElement;
+                  const selEl = document.getElementById("manual-seller") as HTMLInputElement;
+                  if (!custEl?.value.trim() || !selEl?.value.trim()) {
+                    toast.error("Fill in both fields");
+                    return;
+                  }
+                  update("chat_examples", [...(config.chat_examples || []), { customer: custEl.value.trim(), seller: selEl.value.trim() }]);
+                  custEl.value = "";
+                  selEl.value = "";
+                  toast.success("Example added");
+                }}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Example
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Bottom Save */}
       <div className="flex justify-end pb-8">
         <Button onClick={handleSave} disabled={saveMutation.isPending} variant="hero">
@@ -466,4 +602,58 @@ export default function SellerAISettings() {
       </div>
     </div>
   );
+}
+
+/** Parse WhatsApp exported chat .txt into customer-seller message pairs */
+function parseWhatsAppChat(text: string): ChatExample[] {
+  const lines = text.split("\n");
+  const messages: { sender: string; text: string }[] = [];
+
+  // WhatsApp export formats:
+  // [3/26/2026, 2:30:45 PM] Sender: message
+  // 3/26/2026, 2:30 PM - Sender: message
+  const lineRe = /^(?:\[?)?\d{1,2}\/\d{1,2}\/\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?\]?\s*[-–]?\s*([^:]+):\s*(.+)$/;
+
+  for (const line of lines) {
+    const match = line.match(lineRe);
+    if (match) {
+      const sender = match[1].trim();
+      const msg = match[2].trim();
+      if (msg && !msg.startsWith("<") && !msg.includes("omitted") && !msg.includes("attached")) {
+        messages.push({ sender, text: msg });
+      }
+    }
+  }
+
+  if (messages.length < 2) return [];
+
+  // Detect the two participants
+  const senders = new Map<string, number>();
+  for (const m of messages) {
+    senders.set(m.sender, (senders.get(m.sender) || 0) + 1);
+  }
+  const sorted = [...senders.entries()].sort((a, b) => b[1] - a[1]);
+  if (sorted.length < 2) return [];
+
+  // The one who replies MORE is likely the seller (business owner)
+  // Ask user to pick? For now assume the second most frequent is the customer
+  const sellerName = sorted[0][0];
+  const examples: ChatExample[] = [];
+
+  for (let i = 0; i < messages.length - 1; i++) {
+    const curr = messages[i];
+    const next = messages[i + 1];
+    // Customer message followed by seller reply
+    if (curr.sender !== sellerName && next.sender === sellerName) {
+      examples.push({ customer: curr.text, seller: next.text });
+      i++; // skip the reply
+    }
+  }
+
+  // Limit to 30 best examples (take evenly distributed ones)
+  if (examples.length > 30) {
+    const step = examples.length / 30;
+    return Array.from({ length: 30 }, (_, i) => examples[Math.floor(i * step)]);
+  }
+  return examples;
 }
