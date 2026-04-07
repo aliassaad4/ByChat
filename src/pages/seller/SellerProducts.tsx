@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSellerProfile } from "@/hooks/useSellerProfile";
-import { Plus, Pencil, Trash2, Package } from "lucide-react";
+import { Plus, Pencil, Trash2, Package, PackageCheck, PackageX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,8 @@ export type Product = {
   source: string;
   shopify_product_id: string | null;
   shopify_variant_id: string | null;
+  shopify_variant_title: string | null;
+  quantity: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -109,6 +111,22 @@ export default function SellerProducts() {
                       {product.source === "shopify" && (
                         <Badge className="bg-[#96BF48]/20 text-[#96BF48] border-[#96BF48]/30 text-xs">
                           Shopify
+                        </Badge>
+                      )}
+                      {product.quantity !== null && product.quantity !== undefined && (
+                        <Badge
+                          className={`text-xs ${
+                            product.quantity > 0
+                              ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                              : "bg-red-500/15 text-red-400 border-red-500/30"
+                          }`}
+                          variant="outline"
+                        >
+                          {product.quantity > 0 ? (
+                            <><PackageCheck className="w-3 h-3 mr-1" />{product.quantity} in stock</>
+                          ) : (
+                            <><PackageX className="w-3 h-3 mr-1" />Out of stock</>
+                          )}
                         </Badge>
                       )}
                     </div>
