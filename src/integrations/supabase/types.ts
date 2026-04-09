@@ -179,9 +179,11 @@ export type Database = {
           is_available: boolean
           name: string
           price: number
+          quantity: number | null
           seller_id: string
           shopify_product_id: string | null
           shopify_variant_id: string | null
+          shopify_variant_title: string | null
           source: string
           updated_at: string
         }
@@ -194,9 +196,11 @@ export type Database = {
           is_available?: boolean
           name: string
           price?: number
+          quantity?: number | null
           seller_id: string
           shopify_product_id?: string | null
           shopify_variant_id?: string | null
+          shopify_variant_title?: string | null
           source?: string
           updated_at?: string
         }
@@ -209,9 +213,11 @@ export type Database = {
           is_available?: boolean
           name?: string
           price?: number
+          quantity?: number | null
           seller_id?: string
           shopify_product_id?: string | null
           shopify_variant_id?: string | null
+          shopify_variant_title?: string | null
           source?: string
           updated_at?: string
         }
@@ -243,6 +249,9 @@ export type Database = {
           instagram_handle: string | null
           phone_number: string
           shopify_access_token: string | null
+          shopify_auto_sync_interval: number | null
+          shopify_client_id: string | null
+          shopify_client_secret: string | null
           shopify_connected: boolean
           shopify_last_sync_at: string | null
           shopify_store_url: string | null
@@ -277,6 +286,9 @@ export type Database = {
           instagram_handle?: string | null
           phone_number: string
           shopify_access_token?: string | null
+          shopify_auto_sync_interval?: number | null
+          shopify_client_id?: string | null
+          shopify_client_secret?: string | null
           shopify_connected?: boolean
           shopify_last_sync_at?: string | null
           shopify_store_url?: string | null
@@ -311,6 +323,9 @@ export type Database = {
           instagram_handle?: string | null
           phone_number?: string
           shopify_access_token?: string | null
+          shopify_auto_sync_interval?: number | null
+          shopify_client_id?: string | null
+          shopify_client_secret?: string | null
           shopify_connected?: boolean
           shopify_last_sync_at?: string | null
           shopify_store_url?: string | null
@@ -329,6 +344,50 @@ export type Database = {
           working_hours_open?: string
         }
         Relationships: []
+      }
+      shopify_sync_history: {
+        Row: {
+          id: string
+          seller_id: string
+          synced_at: string
+          imported: number
+          updated: number
+          errors: number
+          total_shopify_products: number
+          error_details: Json | null
+          trigger_type: string
+        }
+        Insert: {
+          id?: string
+          seller_id: string
+          synced_at?: string
+          imported?: number
+          updated?: number
+          errors?: number
+          total_shopify_products?: number
+          error_details?: Json | null
+          trigger_type?: string
+        }
+        Update: {
+          id?: string
+          seller_id?: string
+          synced_at?: string
+          imported?: number
+          updated?: number
+          errors?: number
+          total_shopify_products?: number
+          error_details?: Json | null
+          trigger_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopify_sync_history_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "sellers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
